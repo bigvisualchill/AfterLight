@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebGPU Shaded Particle Spheres</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0f14;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .hint {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        color: #cdd6e0;
+        font: 10px/1.4 "SF Mono", Menlo, monospace;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+      .panel {
+        width: 100%;
+        background: rgba(12, 18, 26, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        color: #d6e0ea;
+        font: 11.5px/1.3 "SF Mono", Menlo, monospace;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(8px);
+      }
+      .panel-stack {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 16px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        align-items: start;
+      }
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .panel-header span {
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .panel-toggle {
+        width: 20px;
+        height: 20px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .panel-content {
+        padding: 8px 12px 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        display: grid;
+        gap: 9px;
+      }
+      .panel.collapsed .panel-content {
+        display: none;
+      }
+      .control {
+        display: grid;
+        gap: 6px;
+      }
+      .select-control {
+        margin-bottom: 6px;
+      }
+      .control-stack {
+        display: grid;
+        gap: 9px;
+      }
+      .control label {
+        display: flex;
+        align-items: center;
+        font-size: 10.5px;
+        color: #9fb0c2;
+      }
+      .label-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+      }
+      .collapse-indicator {
+        font-size: 10px;
+        transition: transform 120ms ease;
+        opacity: 0.8;
+      }
+      .range-control.expanded .collapse-indicator {
+        transform: rotate(90deg);
+      }
+      .range-control input[type="range"] {
+        display: none;
+      }
+      .range-control.expanded input[type="range"] {
+        display: block;
+      }
+      .range-control .reset-btn {
+        display: none;
+      }
+      .range-control.expanded .reset-btn {
+        display: inline-flex;
+      }
+      .editable-value {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: auto;
+        padding: 1px 6px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #d6e0ea;
+        cursor: ew-resize;
+        min-width: 36px;
+      }
+      .editable-value.editing {
+        background: rgba(255, 255, 255, 0.16);
+        cursor: text;
+        outline: none;
+      }
+      .control input[type="range"] {
+        width: 100%;
+      }
+      .control input[type="color"] {
+        width: 100%;
+        height: 28px;
+        border: none;
+        background: transparent;
+        padding: 0;
+      }
+      .control select {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.08);
+        color: #d6e0ea;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        padding: 5px 7px;
+        font: 10.5px/1.2 "SF Mono", Menlo, monospace;
+      }
+      .direction-control {
+        align-items: start;
+      }
+      .direction-values {
+        display: inline-flex;
+        gap: 8px;
+        color: #cfd8e3;
+        font-size: 11px;
+      }
+      .direction-wheel {
+        position: relative;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at center, rgba(86, 156, 255, 0.2), rgba(12, 18, 26, 0.95) 60%),
+          linear-gradient(transparent 49%, rgba(255, 255, 255, 0.12) 50%, transparent 51%),
+          linear-gradient(90deg, transparent 49%, rgba(255, 255, 255, 0.12) 50%, transparent 51%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45);
+        justify-self: start;
+        cursor: pointer;
+        touch-action: none;
+      }
+      .direction-3d {
+        display: grid;
+        gap: 9px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: start;
+      }
+      .direction-wheel::after {
+        content: "";
+        position: absolute;
+        inset: 6px;
+        border-radius: 50%;
+        border: 1px dashed rgba(255, 255, 255, 0.12);
+      }
+      .direction-wheel-dot {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #56a3ff;
+        border: 1px solid #0b0f14;
+        box-shadow: 0 0 8px rgba(86, 156, 255, 0.6);
+        transform: translate(-50%, -50%);
+        left: 50%;
+        top: 50%;
+      }
+      .curve-editor {
+        width: 100%;
+        height: 90px;
+        border-radius: 8px;
+        background: rgba(6, 10, 16, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        cursor: crosshair;
+      }
+      .gradient-editor {
+        width: 100%;
+        height: 36px;
+        border-radius: 8px;
+        background: rgba(6, 10, 16, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        cursor: pointer;
+      }
+      .pill-toggle {
+        justify-self: start;
+        min-width: 64px;
+        padding: 4px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: transparent;
+        color: #cfd8e3;
+        font: 11px/1.2 "SF Mono", Menlo, monospace;
+        cursor: pointer;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+      }
+      .pill-toggle[data-state="on"] {
+        background: rgba(86, 156, 255, 0.85);
+        border-color: rgba(86, 156, 255, 0.95);
+        color: #0b0f14;
+      }
+      .reset-btn {
+        justify-self: end;
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #cfd8e3;
+        font: 11px/1.2 "SF Mono", Menlo, monospace;
+        cursor: pointer;
+      }
+      .reset-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gfx"></canvas>
+    <div class="hint">Click to spawn particles</div>
+    <div class="panel-stack">
+      <div class="panel">
+        <div class="panel-header">
+          <span>Particles</span>
+          <div class="panel-toggle">▾</div>
+        </div>
+        <div class="panel-content">
+          <div class="control select-control">
+            <label for="particleShape">Particle Shape</label>
+            <select id="particleShape">
+              <option value="circle">Circle (2D)</option>
+              <option value="square">Square (2D)</option>
+              <option value="cube">Cube (3D)</option>
+              <option value="sphere">Sphere (3D)</option>
+              <option value="icosahedron">Icosahedron (3D)</option>
+            </select>
+          </div>
+          <div id="spin2dControls" class="control-stack">
+            <div class="control">
+              <label for="spinRate2d">Spin Rate <span id="spinRate2dVal"></span></label>
+              <input id="spinRate2d" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+          </div>
+          <div id="spin3dControls" class="control-stack">
+            <div class="control">
+              <label for="spinRateX">Spin X <span id="spinRateXVal"></span></label>
+              <input id="spinRateX" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+            <div class="control">
+              <label for="spinRateY">Spin Y <span id="spinRateYVal"></span></label>
+              <input id="spinRateY" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+            <div class="control">
+              <label for="spinRateZ">Spin Z <span id="spinRateZVal"></span></label>
+              <input id="spinRateZ" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+          </div>
+          <div class="control">
+            <label for="spinRandom">Spin Random <span id="spinRandomVal"></span></label>
+            <input id="spinRandom" type="range" min="0" max="2" step="0.1" data-default="0.4" />
+          </div>
+          <div class="control">
+            <label for="lifeSeconds">Life (sec) <span id="lifeSecondsVal"></span></label>
+            <input id="lifeSeconds" type="range" min="0.4" max="4" step="0.1" data-default="2.0" />
+          </div>
+          <div class="control">
+            <label for="lifeRandom">Life Random <span id="lifeRandomVal"></span></label>
+            <input id="lifeRandom" type="range" min="0" max="1" step="0.05" data-default="0" />
+          </div>
+          <div class="control">
+            <label for="particleSize">Particle Size <span id="particleSizeVal"></span></label>
+            <input id="particleSize" type="range" min="1" max="500" step="1" data-default="1" />
+          </div>
+          <div class="control">
+            <label for="sizeCurveCanvas">Size Curve</label>
+            <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
+          </div>
+          <div class="control" id="gradientControl">
+            <label for="colorGradientCanvas">Color Gradient</label>
+            <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
+          </div>
+          <div class="control select-control">
+            <label for="colorMode">Color Mode</label>
+            <select id="colorMode">
+              <option value="gradient">Gradient Over Life</option>
+              <option value="random">Random From Gradient</option>
+              <option value="solid">Solid Color</option>
+            </select>
+          </div>
+          <div class="control" id="solidColorControl">
+            <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
+            <input id="solidColor" type="color" />
+          </div>
+          <div class="control">
+            <label for="opacityCurveCanvas">Opacity Curve</label>
+            <canvas id="opacityCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
+          </div>
+          <div class="control select-control">
+            <label for="blendMode">Blend Mode</label>
+            <select id="blendMode">
+              <option value="alpha">Normal</option>
+              <option value="additive">Add</option>
+              <option value="screen">Screen</option>
+              <option value="multiply">Multiply</option>
+            </select>
+          </div>
+          <div class="control" id="softnessControl">
+            <label for="softness">Soft Particles <span id="softnessVal"></span></label>
+            <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Emitter</span>
+          <div class="panel-toggle">▾</div>
+        </div>
+        <div class="panel-content">
+          <div class="control select-control">
+            <label for="emitMode">Emission Mode</label>
+            <select id="emitMode">
+              <option value="hold">On Click (Hold)</option>
+              <option value="auto">Continuous</option>
+            </select>
+          </div>
+          <div class="control select-control">
+            <label for="emitterShape">Emitter Shape</label>
+            <select id="emitterShape">
+              <option value="point">Point</option>
+              <option value="sphere">Sphere</option>
+              <option value="box">Box</option>
+              <option value="plane">Plane</option>
+              <option value="line">Line</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
+            <input id="emissionRate" type="range" min="0" max="40" step="1" data-default="40" />
+          </div>
+          <div id="emitterShapeControls" class="control-stack">
+            <div class="control">
+              <label for="emitterSize">Emitter Size <span id="emitterSizeVal"></span></label>
+              <input id="emitterSize" type="range" min="0" max="1" step="0.02" data-default="0.2" />
+            </div>
+          <div class="control">
+            <label for="emitterPosX">Emitter X <span id="emitterPosXVal"></span></label>
+            <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+          </div>
+          <div class="control">
+            <label for="emitterPosY">Emitter Y <span id="emitterPosYVal"></span></label>
+            <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+          </div>
+          <div class="control">
+            <label for="emitterPosZ">Emitter Z <span id="emitterPosZVal"></span></label>
+            <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+          </div>
+          <div class="control select-control">
+            <label for="emitFrom">Emit From</label>
+            <select id="emitFrom">
+              <option value="volume">Volume</option>
+              <option value="edge">Edge</option>
+            </select>
+          </div>
+          </div>
+          <div class="control">
+            <label for="initialSpeed">Initial Speed <span id="initialSpeedVal"></span></label>
+            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
+          </div>
+          <div class="control">
+            <label for="speedRandom">Speed Random <span id="speedRandomVal"></span></label>
+            <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
+          </div>
+          <div class="control">
+            <label for="coneAngle">Cone Angle <span id="coneAngleVal"></span></label>
+            <input id="coneAngle" type="range" min="0" max="90" step="1" data-default="16" />
+          </div>
+          <div class="control direction-control select-control">
+            <label for="directionMode">Direction Mode</label>
+            <select id="directionMode">
+              <option value="2d">2D (Flat)</option>
+              <option value="3d">3D (XYZ)</option>
+            </select>
+          </div>
+          <div id="direction2dControls" class="control direction-control">
+            <label>Emission Angle
+              <span class="direction-values">
+                <span id="direction2dVal"></span>
+              </span>
+            </label>
+            <div id="direction2dWheel" class="direction-wheel" role="slider" aria-label="2D emission angle">
+              <div id="direction2dDot" class="direction-wheel-dot"></div>
+            </div>
+            <button id="direction2dReset" type="button" class="reset-btn">Reset</button>
+          </div>
+          <div id="direction3dControls" class="direction-3d">
+            <div class="control direction-control">
+              <label>Rotate X
+                <span class="direction-values">
+                  <span id="directionXVal"></span>
+                </span>
+              </label>
+              <div id="directionXWheel" class="direction-wheel" role="slider" aria-label="Rotate X">
+                <div id="directionXDot" class="direction-wheel-dot"></div>
+              </div>
+              <button id="directionXReset" type="button" class="reset-btn">Reset</button>
+            </div>
+            <div class="control direction-control">
+              <label>Rotate Y
+                <span class="direction-values">
+                  <span id="directionYVal"></span>
+                </span>
+              </label>
+              <div id="directionYWheel" class="direction-wheel" role="slider" aria-label="Rotate Y">
+                <div id="directionYDot" class="direction-wheel-dot"></div>
+              </div>
+              <button id="directionYReset" type="button" class="reset-btn">Reset</button>
+            </div>
+            <div class="control direction-control">
+              <label>Rotate Z
+                <span class="direction-values">
+                  <span id="directionZVal"></span>
+                </span>
+              </label>
+              <div id="directionZWheel" class="direction-wheel" role="slider" aria-label="Rotate Z">
+                <div id="directionZDot" class="direction-wheel-dot"></div>
+              </div>
+              <button id="directionZReset" type="button" class="reset-btn">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Forces</span>
+          <div class="panel-toggle">▾</div>
+        </div>
+        <div class="panel-content">
+          <div class="control">
+            <label for="forcesEnabled">Forces Enabled</label>
+            <button id="forcesEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+          </div>
+          <div id="forcesControls" class="control-stack">
+            <div class="control">
+              <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
+              <input id="turbulence" type="range" min="0" max="3" step="0.1" data-default="1.2" />
+            </div>
+            <div class="control">
+              <label for="zTurbulence">Z Turbulence <span id="zTurbulenceVal"></span></label>
+              <input id="zTurbulence" type="range" min="0" max="3" step="0.1" data-default="1.6" />
+            </div>
+            <div class="control">
+              <label for="gravity">Gravity <span id="gravityVal"></span></label>
+              <input id="gravity" type="range" min="-2" max="2" step="0.05" data-default="-0.2" />
+            </div>
+            <div class="control">
+              <label for="windX">Wind X <span id="windXVal"></span></label>
+              <input id="windX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="windY">Wind Y <span id="windYVal"></span></label>
+              <input id="windY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="windZ">Wind Z <span id="windZVal"></span></label>
+              <input id="windZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="drag">Drag <span id="dragVal"></span></label>
+              <input id="drag" type="range" min="0" max="2" step="0.05" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="attractorStrength">Attractor Strength <span id="attractorStrengthVal"></span></label>
+              <input id="attractorStrength" type="range" min="0" max="5" step="0.1" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
+              <input id="attractorRadius" type="range" min="0" max="6" step="0.1" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="groundEnabled">Ground Collision</label>
+              <button id="groundEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+            </div>
+            <div id="groundControls" class="control-stack">
+              <div class="control">
+                <label for="groundLevel">Ground Level <span id="groundLevelVal"></span></label>
+                <input id="groundLevel" type="range" min="-2" max="2" step="0.1" data-default="-1" />
+              </div>
+              <div class="control">
+                <label for="bounce">Bounce <span id="bounceVal"></span></label>
+                <input id="bounce" type="range" min="0" max="1" step="0.05" data-default="0.2" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Shading</span>
+          <div class="panel-toggle">▾</div>
+        </div>
+        <div class="panel-content">
+          <div class="control">
+            <label for="shadingEnabled">Shading Enabled</label>
+            <button id="shadingEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+          </div>
+          <div id="shadingControls" class="control-stack">
+            <div class="control">
+              <label for="baseColor">Light Color <span id="baseColorVal"></span></label>
+              <input id="baseColor" type="color" />
+            </div>
+            <div class="control">
+              <label for="lightIntensity">Intensity <span id="lightIntensityVal"></span></label>
+              <input id="lightIntensity" type="range" min="0" max="3" step="0.1" data-default="1.2" />
+            </div>
+            <div class="control">
+              <label for="lightPosX">Light X <span id="lightPosXVal"></span></label>
+              <input id="lightPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="lightPosY">Light Y <span id="lightPosYVal"></span></label>
+              <input id="lightPosY" type="range" min="-2" max="2" step="0.05" data-default="1" />
+            </div>
+            <div class="control">
+              <label for="lightPosZ">Light Z <span id="lightPosZVal"></span></label>
+              <input id="lightPosZ" type="range" min="-2" max="2" step="0.05" data-default="0.3" />
+            </div>
+            <div class="control">
+              <label for="lightAzimuth">Azimuth <span id="lightAzimuthVal"></span></label>
+              <input id="lightAzimuth" type="range" min="0" max="360" step="1" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="lightElevation">Elevation <span id="lightElevationVal"></span></label>
+              <input id="lightElevation" type="range" min="-10" max="90" step="1" data-default="70" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Depth of Field</span>
+          <div class="panel-toggle">▾</div>
+        </div>
+        <div class="panel-content">
+          <div class="control">
+            <label for="dofEnabled">DOF Enabled</label>
+            <button id="dofEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+          </div>
+          <div id="dofControls" class="control-stack">
+            <div class="control">
+              <label for="focusDepth">Focus Depth <span id="focusDepthVal"></span></label>
+              <input id="focusDepth" type="range" min="-6" max="6" step="0.1" data-default="0" />
+            </div>
+            <div class="control">
+              <label for="focusRange">Focus Range <span id="focusRangeVal"></span></label>
+              <input id="focusRange" type="range" min="0.1" max="3" step="0.1" data-default="0.8" />
+            </div>
+            <div class="control">
+              <label for="aperture">Aperture <span id="apertureVal"></span></label>
+              <input id="aperture" type="range" min="0" max="10" step="0.1" data-default="7" />
+            </div>
+            <div class="control select-control">
+              <label for="dofMode">DOF Mode</label>
+              <select id="dofMode">
+                <option value="bokeh">Bokeh</option>
+                <option value="physical">Physical Lens</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="focusOverlay">Focus Overlay</label>
+              <button id="focusOverlay" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
+            <div class="control">
+              <label for="bloomStrength">Bloom Strength <span id="bloomStrengthVal"></span></label>
+              <input id="bloomStrength" type="range" min="0" max="2" step="0.05" data-default="0.3" />
+            </div>
+            <div class="control">
+              <label for="bloomThreshold">Bloom Threshold <span id="bloomThresholdVal"></span></label>
+              <input id="bloomThreshold" type="range" min="0" max="1.5" step="0.05" data-default="0.8" />
+            </div>
+            <div class="control">
+              <label for="exposure">Exposure <span id="exposureVal"></span></label>
+              <input id="exposure" type="range" min="0.2" max="3" step="0.05" data-default="1.2" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
