@@ -1,24 +1,33 @@
 const canvas = document.getElementById("gfx");
+const gizmoCanvas = document.getElementById("gizmo");
+const gizmoCtx = gizmoCanvas ? gizmoCanvas.getContext("2d") : null;
 
 if (!navigator.gpu) {
   document.body.innerHTML = "WebGPU not supported in this browser.";
   throw new Error("WebGPU not supported");
 }
 
-const MAX_PARTICLES = 8000;
+let particleCapacity = 10000; // Initial capacity, grows dynamically as needed
 const GRAVITY = -0.2;
 const CAMERA_FOV = Math.PI / 4;
 
-let spawnCount = 10;
 let emissionRate = 40;
 let initialSpeed = 1.0;
 let turbulenceStrength = 1.2;
-let zTurbulence = 1.6;
+let turbulenceScale = 0.8;
 let gravity = GRAVITY;
 let wind = [0.0, 0.0, 0.0];
 let drag = 0.0;
+let forceMode = "turbulence";
+let curlStrength = 1.2;
+let curlScale = 0.8;
+let vortexStrength = 1.8;
+let vortexRadius = 1.5;
+let vortexEnabled = false;
 let attractorStrength = 0.0;
 let attractorRadius = 0.0;
+let attractorEnabled = false;
+let emitterGizmoEnabled = false;
 let groundLevel = -1.0;
 let bounce = 0.2;
 let groundEnabled = true;
@@ -31,8 +40,6 @@ let emitMode = "auto";
 let particleShape = "circle";
 let emitFrom = "volume";
 let coneAngle = 16;
-let directionMode = "3d";
-let directionAngle2d = 0;
 let directionRotX = 0;
 let directionRotY = 0;
 let directionRotZ = 0;
@@ -120,6 +127,37 @@ function turbulence(x, y, z, octaves = 3) {
   return t;
 }
 
+function noiseVec3(x, y, z) {
+  return [
+    noise3(x, y, z),
+    noise3(x + 31.7, y + 11.3, z + 47.2),
+    noise3(x + 59.2, y + 27.1, z + 13.9),
+  ];
+}
+
+function curlNoise(x, y, z) {
+  const e = 0.1;
+  const n1 = noiseVec3(x, y + e, z);
+  const n2 = noiseVec3(x, y - e, z);
+  const n3 = noiseVec3(x, y, z + e);
+  const n4 = noiseVec3(x, y, z - e);
+  const n5 = noiseVec3(x + e, y, z);
+  const n6 = noiseVec3(x - e, y, z);
+
+  const dFzDy = (n1[2] - n2[2]) / (2 * e);
+  const dFyDz = (n3[1] - n4[1]) / (2 * e);
+  const dFxDz = (n3[0] - n4[0]) / (2 * e);
+  const dFzDx = (n5[2] - n6[2]) / (2 * e);
+  const dFyDx = (n5[1] - n6[1]) / (2 * e);
+  const dFxDy = (n1[0] - n2[0]) / (2 * e);
+
+  return normalizeVec3([
+    dFzDy - dFyDz,
+    dFxDz - dFzDx,
+    dFyDx - dFxDy,
+  ]);
+}
+
 function normalizeVec3(v) {
   const len = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / len, v[1] / len, v[2] / len];
@@ -141,6 +179,41 @@ function rotateZ(v, angle) {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return [v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2]];
+}
+
+function applyEmitterRotation(point) {
+  const ax = (directionRotX * Math.PI) / 180;
+  const ay = (directionRotY * Math.PI) / 180;
+  const az = (directionRotZ * Math.PI) / 180;
+  let p = rotateX(point, ax);
+  p = rotateY(p, ay);
+  p = rotateZ(p, az);
+  return p;
+}
+
+function worldToScreen(pos) {
+  const x = pos[0], y = pos[1], z = pos[2];
+  const w =
+    viewProj[3] * x +
+    viewProj[7] * y +
+    viewProj[11] * z +
+    viewProj[15];
+  if (w <= 0.0001) return null;
+  const clipX =
+    viewProj[0] * x +
+    viewProj[4] * y +
+    viewProj[8] * z +
+    viewProj[12];
+  const clipY =
+    viewProj[1] * x +
+    viewProj[5] * y +
+    viewProj[9] * z +
+    viewProj[13];
+  const ndcX = clipX / w;
+  const ndcY = clipY / w;
+  const sx = (ndcX * 0.5 + 0.5) * gizmoSize.width;
+  const sy = (-ndcY * 0.5 + 0.5) * gizmoSize.height;
+  return [sx, sy];
 }
 
 function clamp(value, min, max) {
@@ -677,8 +750,8 @@ const quadBuffer = device.createBuffer({
 device.queue.writeBuffer(quadBuffer, 0, quadVerts);
 
 const instanceStride = 17 * 4;
-const instanceBuffer = device.createBuffer({
-  size: MAX_PARTICLES * instanceStride,
+let instanceBuffer = device.createBuffer({
+  size: particleCapacity * instanceStride,
   usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
 });
 
@@ -798,9 +871,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
   let uv = input.localPos.xy * 0.5 + 0.5;
   let noise = textureSample(noiseTexture, noiseSampler, uv).r;
   let noiseMix = mix(1.0, noise, uniforms.shapeParams.z);
-  let alpha = input.opacity;
+  let blendScale = uniforms.motionBlurPad.w;
+  let alpha = input.opacity * blendScale;
   let premul = step(0.5, uniforms.motionBlurPad.z);
-  let colorOut = shaded * noiseMix;
+  let colorOut = shaded * noiseMix * blendScale;
   if (uniforms.shapeParams.x > 1.5) {
     let edge = length(input.localPos.xy);
     if (uniforms.shapeParams.w > 0.001) {
@@ -967,6 +1041,7 @@ const dofPipeline = device.createRenderPipeline({
 let colorTexture;
 let depthTexture;
 let dofBindGroup;
+let gizmoSize = { width: 0, height: 0, dpr: 1 };
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssWidth = canvas.clientWidth || window.innerWidth;
@@ -974,6 +1049,14 @@ function resize() {
   canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
   canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
   context.configure({ device, format, alphaMode: "premultiplied" });
+  if (gizmoCanvas && gizmoCtx) {
+    gizmoSize = { width: cssWidth, height: cssHeight, dpr };
+    gizmoCanvas.width = Math.max(1, Math.floor(cssWidth * dpr));
+    gizmoCanvas.height = Math.max(1, Math.floor(cssHeight * dpr));
+    gizmoCanvas.style.width = `${cssWidth}px`;
+    gizmoCanvas.style.height = `${cssHeight}px`;
+    gizmoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
   if (colorTexture) colorTexture.destroy();
   if (depthTexture) depthTexture.destroy();
   colorTexture = device.createTexture({
@@ -1005,7 +1088,7 @@ const viewProj = new Float32Array(16);
 const invViewProj = new Float32Array(16);
 const uniformData = new Float32Array(40);
 const dofData = new Float32Array(16);
-const instanceData = new Float32Array(MAX_PARTICLES * 17);
+let instanceData = new Float32Array(particleCapacity * 17);
 
 const eye = [0, 0.4, 6];
 const target = [0, 0, 0];
@@ -1071,6 +1154,7 @@ function updateCamera(timeSeconds) {
   uniformData[36] = 0.0;
   uniformData[37] = shadingEnabled ? 1 : 0;
   uniformData[38] = blendMode === "screen" ? 1 : 0;
+  uniformData[39] = blendMode === "additive" ? 0.4 : blendMode === "screen" ? 0.6 : 1.0;
   device.queue.writeBuffer(uniformBuffer, 0, uniformData.buffer);
 }
 
@@ -1081,6 +1165,215 @@ function worldUnitsPerPixelAt(position) {
   const depth = Math.max(0.1, dx * cameraForward[0] + dy * cameraForward[1] + dz * cameraForward[2]);
   const viewHeight = 2 * depth * Math.tan(CAMERA_FOV * 0.5);
   return viewHeight / Math.max(1, canvas.height);
+}
+
+function drawEmitterWireframe(color, lineWidth) {
+  if (!gizmoCtx) return;
+  const segments = [];
+  const size = Math.max(0.05, emitterSize);
+  const center = [emitterPos[0], emitterPos[1], emitterPos[2]];
+  const rotateLocal = (p) => {
+    const r = applyEmitterRotation(p);
+    return [r[0] + center[0], r[1] + center[1], r[2] + center[2]];
+  };
+
+  if (emitterShape === "sphere") {
+    const rings = 24;
+    for (let i = 0; i < rings; i += 1) {
+      const a0 = (i / rings) * Math.PI * 2;
+      const a1 = ((i + 1) / rings) * Math.PI * 2;
+      const c0 = Math.cos(a0) * size;
+      const s0 = Math.sin(a0) * size;
+      const c1 = Math.cos(a1) * size;
+      const s1 = Math.sin(a1) * size;
+      segments.push([
+        [center[0] + c0, center[1] + s0, center[2]],
+        [center[0] + c1, center[1] + s1, center[2]],
+      ]);
+      segments.push([
+        [center[0], center[1] + c0, center[2] + s0],
+        [center[0], center[1] + c1, center[2] + s1],
+      ]);
+      segments.push([
+        [center[0] + c0, center[1], center[2] + s0],
+        [center[0] + c1, center[1], center[2] + s1],
+      ]);
+    }
+  } else if (emitterShape === "box") {
+    const h = size;
+    const corners = [
+      [-h, -h, -h], [h, -h, -h], [h, h, -h], [-h, h, -h],
+      [-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h],
+    ].map(rotateLocal);
+    const edges = [
+      [0, 1], [1, 2], [2, 3], [3, 0],
+      [4, 5], [5, 6], [6, 7], [7, 4],
+      [0, 4], [1, 5], [2, 6], [3, 7],
+    ];
+    edges.forEach(([a, b]) => segments.push([corners[a], corners[b]]));
+  } else if (emitterShape === "plane") {
+    const h = size;
+    const p0 = rotateLocal([-h, -h, 0]);
+    const p1 = rotateLocal([h, -h, 0]);
+    const p2 = rotateLocal([h, h, 0]);
+    const p3 = rotateLocal([-h, h, 0]);
+    segments.push([p0, p1], [p1, p2], [p2, p3], [p3, p0]);
+  } else if (emitterShape === "line") {
+    const h = size * 0.5;
+    const p0 = rotateLocal([-h, 0, 0]);
+    const p1 = rotateLocal([h, 0, 0]);
+    segments.push([p0, p1]);
+  } else {
+    const h = size * 0.25;
+    segments.push([rotateLocal([-h, 0, 0]), rotateLocal([h, 0, 0])]);
+    segments.push([rotateLocal([0, -h, 0]), rotateLocal([0, h, 0])]);
+    segments.push([rotateLocal([0, 0, -h]), rotateLocal([0, 0, h])]);
+  }
+
+  gizmoCtx.strokeStyle = color;
+  gizmoCtx.lineWidth = lineWidth;
+  gizmoCtx.beginPath();
+  segments.forEach(([a, b]) => {
+    const sa = worldToScreen(a);
+    const sb = worldToScreen(b);
+    if (!sa || !sb) return;
+    gizmoCtx.moveTo(sa[0], sa[1]);
+    gizmoCtx.lineTo(sb[0], sb[1]);
+  });
+  gizmoCtx.stroke();
+}
+
+function drawEmitterGizmo() {
+  if (!gizmoCtx) return;
+  gizmoCtx.clearRect(0, 0, gizmoSize.width, gizmoSize.height);
+  if (!emitterGizmoEnabled) return;
+  const wireColor = "rgba(140, 210, 255, 0.9)";
+  const lineWidth = 1.2;
+  drawEmitterWireframe(wireColor, lineWidth);
+
+  const origin = [emitterPos[0], emitterPos[1], emitterPos[2]];
+  const handleLen = Math.max(0.3, emitterSize * 1.2);
+  const axes = [
+    { axis: [1, 0, 0], color: "rgba(255, 90, 90, 0.95)" },
+    { axis: [0, 1, 0], color: "rgba(90, 255, 140, 0.95)" },
+    { axis: [0, 0, 1], color: "rgba(90, 160, 255, 0.95)" },
+  ];
+  gizmoCtx.lineWidth = lineWidth;
+  axes.forEach(({ axis, color }) => {
+    const rotatedAxis = applyEmitterRotation(axis);
+    const end = [
+      origin[0] + rotatedAxis[0] * handleLen,
+      origin[1] + rotatedAxis[1] * handleLen,
+      origin[2] + rotatedAxis[2] * handleLen,
+    ];
+    const so = worldToScreen(origin);
+    const se = worldToScreen(end);
+    if (!so || !se) return;
+    gizmoCtx.strokeStyle = color;
+    gizmoCtx.beginPath();
+    gizmoCtx.moveTo(so[0], so[1]);
+    gizmoCtx.lineTo(se[0], se[1]);
+    gizmoCtx.stroke();
+    gizmoCtx.fillStyle = color;
+    gizmoCtx.beginPath();
+    gizmoCtx.arc(se[0], se[1], 4, 0, Math.PI * 2);
+    gizmoCtx.fill();
+    const dir = [se[0] - so[0], se[1] - so[1]];
+    const len = Math.hypot(dir[0], dir[1]) || 1;
+    const ux = dir[0] / len;
+    const uy = dir[1] / len;
+    const perp = [-uy, ux];
+    const arrowSize = 6;
+    const tip = [se[0] + ux * arrowSize, se[1] + uy * arrowSize];
+    const left = [
+      se[0] - ux * arrowSize + perp[0] * (arrowSize * 0.6),
+      se[1] - uy * arrowSize + perp[1] * (arrowSize * 0.6),
+    ];
+    const right = [
+      se[0] - ux * arrowSize - perp[0] * (arrowSize * 0.6),
+      se[1] - uy * arrowSize - perp[1] * (arrowSize * 0.6),
+    ];
+    gizmoCtx.beginPath();
+    gizmoCtx.moveTo(tip[0], tip[1]);
+    gizmoCtx.lineTo(left[0], left[1]);
+    gizmoCtx.lineTo(right[0], right[1]);
+    gizmoCtx.closePath();
+    gizmoCtx.fill();
+  });
+}
+
+function getPointerPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+  return [event.clientX - rect.left, event.clientY - rect.top];
+}
+
+function updateEmitterPosInputs() {
+  if (emitterPosXInput) {
+    emitterPosXInput.value = String(emitterPos[0]);
+    emitterPosXInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (emitterPosYInput) {
+    emitterPosYInput.value = String(emitterPos[1]);
+    emitterPosYInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (emitterPosZInput) {
+    emitterPosZInput.value = String(emitterPos[2]);
+    emitterPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function startGizmoDrag(event) {
+  if (!gizmoCtx) return false;
+  const pointer = getPointerPosition(event);
+  const origin = [emitterPos[0], emitterPos[1], emitterPos[2]];
+  const handleLen = Math.max(0.3, emitterSize * 1.2);
+  const axes = [
+    { name: "x", axis: [1, 0, 0] },
+    { name: "y", axis: [0, 1, 0] },
+    { name: "z", axis: [0, 0, 1] },
+  ];
+  let best = null;
+  let bestDist = Infinity;
+  axes.forEach(({ name, axis }) => {
+    const rotatedAxis = applyEmitterRotation(axis);
+    const end = [
+      origin[0] + rotatedAxis[0] * handleLen,
+      origin[1] + rotatedAxis[1] * handleLen,
+      origin[2] + rotatedAxis[2] * handleLen,
+    ];
+    const se = worldToScreen(end);
+    const so = worldToScreen(origin);
+    if (!se || !so) return;
+    const dx = pointer[0] - se[0];
+    const dy = pointer[1] - se[1];
+    const dist = Math.hypot(dx, dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { name, axis: rotatedAxis, so, se };
+    }
+  });
+  if (!best || bestDist > 10) return false;
+  const dir = [best.se[0] - best.so[0], best.se[1] - best.so[1]];
+  const len = Math.hypot(dir[0], dir[1]) || 1;
+  gizmoDragDir = [dir[0] / len, dir[1] / len];
+  gizmoDragAxis = best.axis;
+  gizmoLastPointer = pointer;
+  gizmoDragging = true;
+  return true;
+}
+
+function updateGizmoDrag(event) {
+  if (!gizmoDragging || !gizmoDragAxis) return;
+  const pointer = getPointerPosition(event);
+  const dx = pointer[0] - gizmoLastPointer[0];
+  const dy = pointer[1] - gizmoLastPointer[1];
+  const projected = dx * gizmoDragDir[0] + dy * gizmoDragDir[1];
+  const deltaWorld = projected * worldUnitsPerPixelAt(emitterPos);
+  emitterPos[0] += gizmoDragAxis[0] * deltaWorld;
+  emitterPos[1] += gizmoDragAxis[1] * deltaWorld;
+  emitterPos[2] += gizmoDragAxis[2] * deltaWorld;
+  gizmoLastPointer = pointer;
+  updateEmitterPosInputs();
 }
 
 updateCamera(0);
@@ -1615,6 +1908,7 @@ function setupGradientEditor(canvas, options) {
 function bindRange(id, valueId, getter, setter) {
   const input = document.getElementById(id);
   const label = document.getElementById(valueId);
+  if (!input || !label) return;
   input.value = String(getter());
   label.textContent = formatWithStep(parseFloat(input.value), parseFloat(input.step));
   label.classList.add("editable-value");
@@ -1639,9 +1933,25 @@ bindRange("turbulence", "turbulenceVal", () => turbulenceStrength, (v) => {
   turbulenceStrength = v;
   return turbulenceStrength;
 });
-bindRange("zTurbulence", "zTurbulenceVal", () => zTurbulence, (v) => {
-  zTurbulence = v;
-  return zTurbulence;
+bindRange("turbulenceScale", "turbulenceScaleVal", () => turbulenceScale, (v) => {
+  turbulenceScale = Math.max(0.1, v);
+  return turbulenceScale;
+});
+bindRange("curlStrength", "curlStrengthVal", () => curlStrength, (v) => {
+  curlStrength = v;
+  return curlStrength;
+});
+bindRange("curlScale", "curlScaleVal", () => curlScale, (v) => {
+  curlScale = Math.max(0.1, v);
+  return curlScale;
+});
+bindRange("vortexStrength", "vortexStrengthVal", () => vortexStrength, (v) => {
+  vortexStrength = Math.max(0, v);
+  return vortexStrength;
+});
+bindRange("vortexRadius", "vortexRadiusVal", () => vortexRadius, (v) => {
+  vortexRadius = Math.max(0.1, v);
+  return vortexRadius;
 });
 bindRange("gravity", "gravityVal", () => gravity, (v) => {
   gravity = v;
@@ -1686,6 +1996,45 @@ function setToggleState(button, enabled) {
 
 const forcesControls = document.getElementById("forcesControls");
 forcesControls.style.display = forcesEnabled ? "" : "none";
+
+const forceModeSelect = document.getElementById("forceMode");
+const turbulenceControls = document.getElementById("turbulenceControls");
+const curlControls = document.getElementById("curlControls");
+const vortexControls = document.getElementById("vortexControls");
+const attractorControls = document.getElementById("attractorControls");
+
+function updateForceModeUI() {
+  if (forceModeSelect) forceModeSelect.value = forceMode;
+if (turbulenceControls) turbulenceControls.style.display = forceMode === "turbulence" ? "" : "none";
+if (curlControls) curlControls.style.display = forceMode === "curl" ? "" : "none";
+if (vortexControls) vortexControls.style.display = vortexEnabled ? "" : "none";
+if (attractorControls) attractorControls.style.display = attractorEnabled ? "" : "none";
+}
+
+if (forceModeSelect) {
+  forceModeSelect.value = forceMode;
+  forceModeSelect.addEventListener("change", () => {
+    forceMode = forceModeSelect.value;
+    updateForceModeUI();
+  });
+}
+updateForceModeUI();
+
+const vortexToggle = document.getElementById("vortexEnabled");
+setToggleState(vortexToggle, vortexEnabled);
+vortexToggle.addEventListener("click", () => {
+  vortexEnabled = !vortexEnabled;
+  setToggleState(vortexToggle, vortexEnabled);
+  updateForceModeUI();
+});
+
+const attractorToggle = document.getElementById("attractorEnabled");
+setToggleState(attractorToggle, attractorEnabled);
+attractorToggle.addEventListener("click", () => {
+  attractorEnabled = !attractorEnabled;
+  setToggleState(attractorToggle, attractorEnabled);
+  updateForceModeUI();
+});
 
 const groundToggle = document.getElementById("groundEnabled");
 const groundControls = document.getElementById("groundControls");
@@ -1893,13 +2242,15 @@ blendModeSelect.addEventListener("change", () => {
   blendMode = blendModeSelect.value;
 });
 
-const directionModeSelect = document.getElementById("directionMode");
-const direction2dControls = document.getElementById("direction2dControls");
+const emitterGizmoToggle = document.getElementById("emitterGizmo");
+setToggleState(emitterGizmoToggle, emitterGizmoEnabled);
+emitterGizmoToggle.addEventListener("click", () => {
+  emitterGizmoEnabled = !emitterGizmoEnabled;
+  setToggleState(emitterGizmoToggle, emitterGizmoEnabled);
+  drawEmitterGizmo();
+});
+
 const direction3dControls = document.getElementById("direction3dControls");
-const direction2dWheel = document.getElementById("direction2dWheel");
-const direction2dDot = document.getElementById("direction2dDot");
-const direction2dVal = document.getElementById("direction2dVal");
-const direction2dReset = document.getElementById("direction2dReset");
 const directionXWheel = document.getElementById("directionXWheel");
 const directionXDot = document.getElementById("directionXDot");
 const directionXVal = document.getElementById("directionXVal");
@@ -1927,21 +2278,10 @@ function updateWheel(wheel, dot, angleDeg) {
   dot.style.top = `${radius + y}px`;
 }
 
-function updateDirectionModeUI() {
-  const is2d = directionMode === "2d";
-  if (directionModeSelect) directionModeSelect.value = directionMode;
-  if (direction2dControls) direction2dControls.style.display = is2d ? "" : "none";
-  if (direction3dControls) direction3dControls.style.display = is2d ? "none" : "";
-}
-
 function updateDirectionUI() {
-  directionAngle2d = normalizeAngle(directionAngle2d);
   directionRotX = normalizeAngle(directionRotX);
   directionRotY = normalizeAngle(directionRotY);
   directionRotZ = normalizeAngle(directionRotZ);
-  if (direction2dVal && !direction2dVal.classList.contains("editing")) {
-    direction2dVal.textContent = `${Math.round(directionAngle2d)}°`;
-  }
   if (directionXVal && !directionXVal.classList.contains("editing")) {
     directionXVal.textContent = `${Math.round(directionRotX)}°`;
   }
@@ -1951,7 +2291,6 @@ function updateDirectionUI() {
   if (directionZVal && !directionZVal.classList.contains("editing")) {
     directionZVal.textContent = `${Math.round(directionRotZ)}°`;
   }
-  updateWheel(direction2dWheel, direction2dDot, directionAngle2d);
   updateWheel(directionXWheel, directionXDot, directionRotX);
   updateWheel(directionYWheel, directionYDot, directionRotY);
   updateWheel(directionZWheel, directionZDot, directionRotZ);
@@ -2007,18 +2346,6 @@ function attachAngleWheel(wheel, onChange) {
   });
 }
 
-if (directionModeSelect) {
-  directionModeSelect.value = directionMode;
-  directionModeSelect.addEventListener("change", () => {
-    directionMode = directionModeSelect.value;
-    updateDirectionModeUI();
-    updateDirectionUI();
-  });
-}
-
-setupAngleValueEditor(direction2dVal, () => directionAngle2d, (value) => {
-  directionAngle2d = value;
-});
 setupAngleValueEditor(directionXVal, () => directionRotX, (value) => {
   directionRotX = value;
 });
@@ -2029,10 +2356,6 @@ setupAngleValueEditor(directionZVal, () => directionRotZ, (value) => {
   directionRotZ = value;
 });
 
-attachAngleWheel(direction2dWheel, (angle) => {
-  directionAngle2d = angle;
-  updateDirectionUI();
-});
 attachAngleWheel(directionXWheel, (angle) => {
   directionRotX = angle;
   updateDirectionUI();
@@ -2046,12 +2369,6 @@ attachAngleWheel(directionZWheel, (angle) => {
   updateDirectionUI();
 });
 
-if (direction2dReset) {
-  direction2dReset.addEventListener("click", () => {
-    directionAngle2d = 0;
-    updateDirectionUI();
-  });
-}
 if (directionXReset) {
   directionXReset.addEventListener("click", () => {
     directionRotX = 0;
@@ -2070,8 +2387,6 @@ if (directionZReset) {
     updateDirectionUI();
   });
 }
-
-updateDirectionModeUI();
 updateDirectionUI();
 
 const baseColorInput = document.getElementById("baseColor");
@@ -2132,6 +2447,10 @@ const gradientEditor = setupGradientEditor(colorGradientCanvas, {
   },
 });
 
+const emitterPosXInput = document.getElementById("emitterPosX");
+const emitterPosYInput = document.getElementById("emitterPosY");
+const emitterPosZInput = document.getElementById("emitterPosZ");
+
 colorModeSelect.value = particleColorMode;
 function updateColorModeUI() {
   const isSolid = particleColorMode === "solid";
@@ -2160,7 +2479,7 @@ function attachSliderResets() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "reset-btn";
-    btn.textContent = "Reset";
+    btn.textContent = "ø";
     btn.addEventListener("click", () => {
       input.value = input.dataset.default;
       input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2348,10 +2667,6 @@ window.addEventListener("resize", () => {
 });
 
 function getEmissionDirection() {
-  if (directionMode === "2d") {
-    const angle = (directionAngle2d * Math.PI) / 180;
-    return normalizeVec3([Math.cos(angle), Math.sin(angle), 0]);
-  }
   const ax = (directionRotX * Math.PI) / 180;
   const ay = (directionRotY * Math.PI) / 180;
   const az = (directionRotZ * Math.PI) / 180;
@@ -2362,8 +2677,18 @@ function getEmissionDirection() {
   return normalizeVec3(dir);
 }
 
-function spawnAt(x, y) {
-  for (let i = 0; i < spawnCount && particles.length < MAX_PARTICLES; i += 1) {
+function growParticleBuffers(newCapacity) {
+  particleCapacity = newCapacity;
+  instanceBuffer.destroy();
+  instanceBuffer = device.createBuffer({
+    size: particleCapacity * instanceStride,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  instanceData = new Float32Array(particleCapacity * 17);
+}
+
+function spawnAt(x, y, count = 1, timeOffset = 0) {
+  for (let i = 0; i < count; i += 1) {
     const spread = emitterSize;
     let offset = [0, 0, 0];
     const onEdge = emitFrom === "edge";
@@ -2434,10 +2759,12 @@ function spawnAt(x, y) {
     } else if (particleColorMode === "solid") {
       particleColor = solidColor.slice();
     }
+    const age = Math.max(0, timeOffset);
+    const posOffset = age > 0 ? [vel[0] * age, vel[1] * age, vel[2] * age] : [0, 0, 0];
     particles.push({
       pos,
       vel,
-      age: 0,
+      age,
       life: Math.max(0.1, life),
       size: 1.0,
       seed,
@@ -2445,6 +2772,12 @@ function spawnAt(x, y) {
       spin,
       color: particleColor,
     });
+    if (age > 0) {
+      const p = particles[particles.length - 1];
+      p.pos[0] += posOffset[0];
+      p.pos[1] += posOffset[1];
+      p.pos[2] += posOffset[2];
+    }
   }
 }
 
@@ -2468,23 +2801,39 @@ function screenToWorldHit(event) {
 let isSpawning = false;
 let spawnAccum = 0;
 let lastHit = [0, 0];
-let spawnInterval = 0.05;
+let gizmoDragging = false;
+let gizmoDragAxis = null;
+let gizmoDragDir = [0, 0];
+let gizmoLastPointer = [0, 0];
 
 window.addEventListener("pointerdown", (event) => {
+  if (emitterGizmoEnabled && startGizmoDrag(event)) return;
   if (emitMode === "auto") return;
   lastHit = screenToWorldHit(event);
   spawnAt(lastHit[0], lastHit[1]);
   isSpawning = true;
 });
 window.addEventListener("pointermove", (event) => {
+  if (gizmoDragging) {
+    updateGizmoDrag(event);
+    return;
+  }
   if (!isSpawning) return;
   lastHit = screenToWorldHit(event);
 });
 window.addEventListener("pointerup", () => {
   isSpawning = false;
+  if (gizmoDragging) {
+    gizmoDragging = false;
+    gizmoDragAxis = null;
+  }
 });
 window.addEventListener("pointerleave", () => {
   isSpawning = false;
+  if (gizmoDragging) {
+    gizmoDragging = false;
+    gizmoDragAxis = null;
+  }
 });
 
 let lastTime = performance.now();
@@ -2502,20 +2851,44 @@ function frame() {
     }
     if (forcesEnabled) {
       const t = now * 0.0003 + p.seed;
-      const n = turbulence(p.pos[0] * 0.8 + t, p.pos[1] * 0.8 - t, p.pos[2] * 0.8, 3);
-      p.vel[0] += Math.cos(n * Math.PI * 2) * turbulenceStrength * dt;
-      p.vel[1] += gravity * dt + (n - 0.5) * turbulenceStrength * dt;
-      p.vel[2] += Math.sin(n * Math.PI * 2) * turbulenceStrength * dt * zTurbulence;
-      p.vel[0] += wind[0] * dt;
-      p.vel[1] += wind[1] * dt;
-      p.vel[2] += wind[2] * dt;
-      if (drag > 0) {
-        const damp = Math.max(0, 1 - drag * dt);
-        p.vel[0] *= damp;
-        p.vel[1] *= damp;
-        p.vel[2] *= damp;
+      if (forceMode === "turbulence") {
+        const nx = noise3(
+          p.pos[0] * turbulenceScale + t,
+          p.pos[1] * turbulenceScale,
+          p.pos[2] * turbulenceScale,
+        );
+        const ny = noise3(
+          p.pos[0] * turbulenceScale,
+          p.pos[1] * turbulenceScale - t,
+          p.pos[2] * turbulenceScale,
+        );
+        const nz = noise3(
+          p.pos[0] * turbulenceScale,
+          p.pos[1] * turbulenceScale,
+          p.pos[2] * turbulenceScale + t,
+        );
+        p.vel[0] += (nx * 2 - 1) * turbulenceStrength * dt;
+        p.vel[1] += (ny * 2 - 1) * turbulenceStrength * dt;
+        p.vel[2] += (nz * 2 - 1) * turbulenceStrength * dt;
+      } else if (forceMode === "curl") {
+        const c = curlNoise(p.pos[0] * curlScale + t, p.pos[1] * curlScale, p.pos[2] * curlScale - t);
+        p.vel[0] += c[0] * curlStrength * dt;
+        p.vel[1] += c[1] * curlStrength * dt;
+        p.vel[2] += c[2] * curlStrength * dt;
       }
-      if (attractorStrength > 0 && attractorRadius > 0) {
+      if (vortexEnabled) {
+        const dx = p.pos[0];
+        const dz = p.pos[2];
+        const dist = Math.hypot(dx, dz);
+        if (dist < vortexRadius) {
+          const falloff = 1 - dist / vortexRadius;
+          const tangent = normalizeVec3([-dz, 0, dx]);
+          p.vel[0] += tangent[0] * vortexStrength * falloff * dt;
+          p.vel[1] += tangent[1] * vortexStrength * falloff * dt;
+          p.vel[2] += tangent[2] * vortexStrength * falloff * dt;
+        }
+      }
+      if (attractorEnabled && attractorStrength > 0 && attractorRadius > 0) {
         const dx = -p.pos[0];
         const dy = -p.pos[1];
         const dz = -p.pos[2];
@@ -2526,6 +2899,16 @@ function frame() {
           p.vel[1] += (dy / dist) * force * dt;
           p.vel[2] += (dz / dist) * force * dt;
         }
+      }
+      p.vel[1] += gravity * dt;
+      p.vel[0] += wind[0] * dt;
+      p.vel[1] += wind[1] * dt;
+      p.vel[2] += wind[2] * dt;
+      if (drag > 0) {
+        const damp = Math.max(0, 1 - drag * dt);
+        p.vel[0] *= damp;
+        p.vel[1] *= damp;
+        p.vel[2] *= damp;
       }
     }
 
@@ -2544,29 +2927,44 @@ function frame() {
 
   }
 
-  spawnInterval = emissionRate > 0 ? 1 / emissionRate : Number.POSITIVE_INFINITY;
   if (emitMode === "auto") {
-    spawnAccum += dt;
-    while (spawnAccum >= spawnInterval) {
-      spawnAt(0, 0);
-      spawnAccum -= spawnInterval;
+    const lambda = emissionRate * dt;
+    spawnAccum += lambda;
+    const spawnNow = Math.floor(spawnAccum);
+    if (spawnNow > 0) {
+      spawnAccum -= spawnNow;
+      for (let i = 0; i < spawnNow; i += 1) {
+        const offset = ((i + 0.5) / spawnNow) * dt;
+        spawnAt(0, 0, 1, offset);
+      }
     }
   } else if (isSpawning) {
-    spawnAccum += dt;
-    while (spawnAccum >= spawnInterval) {
-      spawnAt(lastHit[0], lastHit[1]);
-      spawnAccum -= spawnInterval;
+    const lambda = emissionRate * dt;
+    spawnAccum += lambda;
+    const spawnNow = Math.floor(spawnAccum);
+    if (spawnNow > 0) {
+      spawnAccum -= spawnNow;
+      for (let i = 0; i < spawnNow; i += 1) {
+        const offset = ((i + 0.5) / spawnNow) * dt;
+        spawnAt(lastHit[0], lastHit[1], 1, offset);
+      }
     }
   }
 
   const drawCount = particles.length;
+  
+  // Grow buffers if needed (double capacity each time)
+  if (drawCount > particleCapacity) {
+    growParticleBuffers(Math.max(drawCount, particleCapacity * 2));
+  }
+  
   if (drawCount > 0) {
     for (let i = 0; i < drawCount; i += 1) {
       const p = particles[i];
       const lifeT = p.age / p.life;
       const sizePixels = particleSize * 5;
       const baseUnitsPerPixel = worldUnitsPerPixelAt(target);
-      const size = evalCurve(sizeCurvePoints, lifeT) * sizePixels * baseUnitsPerPixel * 0.5;
+      const size = evalCurve(sizeCurvePoints, lifeT) * sizePixels * baseUnitsPerPixel;
       const opacity = evalCurve(opacityCurvePoints, lifeT);
       let color;
       if (particleColorMode === "solid") {
@@ -2599,6 +2997,7 @@ function frame() {
   }
 
   updateCamera(now * 0.001);
+  drawEmitterGizmo();
   const baseFocus = Math.hypot(eye[0], eye[1], eye[2]);
   const focusDistance = Math.max(0.1, baseFocus - focusOffset);
   if (dofEnabled) {

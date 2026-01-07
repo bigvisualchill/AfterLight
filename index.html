@@ -17,6 +17,11 @@
         height: 100%;
         display: block;
       }
+      #gizmo {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
       .hint {
         position: absolute;
         left: 16px;
@@ -36,6 +41,9 @@
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
         backdrop-filter: blur(8px);
       }
+      .panel--wide {
+        grid-column: span 2;
+      }
       .panel-stack {
         position: absolute;
         left: 16px;
@@ -43,8 +51,9 @@
         top: 16px;
         display: grid;
         gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(220px, 220px));
         align-items: start;
+        justify-content: start;
       }
       .panel-header {
         display: flex;
@@ -118,6 +127,23 @@
       }
       .range-control.expanded .reset-btn {
         display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .range-control.expanded {
+        grid-template-columns: 1fr 28px;
+        align-items: center;
+      }
+      .range-control.expanded label {
+        grid-column: 1 / -1;
+      }
+      .range-control.expanded input[type="range"] {
+        grid-column: 1;
+        width: 100%;
+      }
+      .range-control.expanded .reset-btn {
+        grid-column: 2;
+        justify-self: end;
       }
       .editable-value {
         display: inline-flex;
@@ -161,8 +187,22 @@
       .direction-values {
         display: inline-flex;
         gap: 8px;
+        margin-left: 6px;
         color: #cfd8e3;
         font-size: 11px;
+      }
+      .direction-3d .control {
+        justify-items: center;
+      }
+      .direction-3d .control label {
+        justify-content: center;
+      }
+      .direction-3d .direction-wheel {
+        justify-self: center;
+        margin-top: 6px;
+      }
+      .direction-reset {
+        margin-left: 6px;
       }
       .direction-wheel {
         position: relative;
@@ -239,13 +279,18 @@
       }
       .reset-btn {
         justify-self: end;
-        padding: 4px 8px;
+        width: 22px;
+        height: 22px;
+        padding: 0;
         border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         background: rgba(255, 255, 255, 0.06);
         color: #cfd8e3;
-        font: 11px/1.2 "SF Mono", Menlo, monospace;
+        font: 14px/1 "SF Mono", Menlo, monospace;
         cursor: pointer;
+        display: grid;
+        place-items: center;
+        text-align: center;
       }
       .reset-btn:hover {
         background: rgba(255, 255, 255, 0.12);
@@ -254,6 +299,7 @@
   </head>
   <body>
     <canvas id="gfx"></canvas>
+    <canvas id="gizmo"></canvas>
     <div class="hint">Click to spawn particles</div>
     <div class="panel-stack">
       <div class="panel">
@@ -348,7 +394,7 @@
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel panel--wide">
         <div class="panel-header">
           <span>Emitter</span>
           <div class="panel-toggle">▾</div>
@@ -372,8 +418,12 @@
             </select>
           </div>
           <div class="control">
+            <label for="emitterGizmo">Show Emitter Gizmo</label>
+            <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+          </div>
+          <div class="control">
             <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
-            <input id="emissionRate" type="range" min="0" max="40" step="1" data-default="40" />
+            <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
           </div>
           <div id="emitterShapeControls" class="control-stack">
             <div class="control">
@@ -400,6 +450,41 @@
             </select>
           </div>
           </div>
+          <div id="direction3dControls" class="direction-3d">
+            <div class="control direction-control">
+              <label>Rotate X
+                <span class="direction-values">
+                  <span id="directionXVal"></span>
+                </span>
+                <button id="directionXReset" type="button" class="reset-btn direction-reset">ø</button>
+              </label>
+              <div id="directionXWheel" class="direction-wheel" role="slider" aria-label="Rotate X">
+                <div id="directionXDot" class="direction-wheel-dot"></div>
+              </div>
+            </div>
+            <div class="control direction-control">
+              <label>Rotate Y
+                <span class="direction-values">
+                  <span id="directionYVal"></span>
+                </span>
+                <button id="directionYReset" type="button" class="reset-btn direction-reset">ø</button>
+              </label>
+              <div id="directionYWheel" class="direction-wheel" role="slider" aria-label="Rotate Y">
+                <div id="directionYDot" class="direction-wheel-dot"></div>
+              </div>
+            </div>
+            <div class="control direction-control">
+              <label>Rotate Z
+                <span class="direction-values">
+                  <span id="directionZVal"></span>
+                </span>
+                <button id="directionZReset" type="button" class="reset-btn direction-reset">ø</button>
+              </label>
+              <div id="directionZWheel" class="direction-wheel" role="slider" aria-label="Rotate Z">
+                <div id="directionZDot" class="direction-wheel-dot"></div>
+              </div>
+            </div>
+          </div>
           <div class="control">
             <label for="initialSpeed">Initial Speed <span id="initialSpeedVal"></span></label>
             <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
@@ -411,59 +496,6 @@
           <div class="control">
             <label for="coneAngle">Cone Angle <span id="coneAngleVal"></span></label>
             <input id="coneAngle" type="range" min="0" max="90" step="1" data-default="16" />
-          </div>
-          <div class="control direction-control select-control">
-            <label for="directionMode">Direction Mode</label>
-            <select id="directionMode">
-              <option value="2d">2D (Flat)</option>
-              <option value="3d">3D (XYZ)</option>
-            </select>
-          </div>
-          <div id="direction2dControls" class="control direction-control">
-            <label>Emission Angle
-              <span class="direction-values">
-                <span id="direction2dVal"></span>
-              </span>
-            </label>
-            <div id="direction2dWheel" class="direction-wheel" role="slider" aria-label="2D emission angle">
-              <div id="direction2dDot" class="direction-wheel-dot"></div>
-            </div>
-            <button id="direction2dReset" type="button" class="reset-btn">Reset</button>
-          </div>
-          <div id="direction3dControls" class="direction-3d">
-            <div class="control direction-control">
-              <label>Rotate X
-                <span class="direction-values">
-                  <span id="directionXVal"></span>
-                </span>
-              </label>
-              <div id="directionXWheel" class="direction-wheel" role="slider" aria-label="Rotate X">
-                <div id="directionXDot" class="direction-wheel-dot"></div>
-              </div>
-              <button id="directionXReset" type="button" class="reset-btn">Reset</button>
-            </div>
-            <div class="control direction-control">
-              <label>Rotate Y
-                <span class="direction-values">
-                  <span id="directionYVal"></span>
-                </span>
-              </label>
-              <div id="directionYWheel" class="direction-wheel" role="slider" aria-label="Rotate Y">
-                <div id="directionYDot" class="direction-wheel-dot"></div>
-              </div>
-              <button id="directionYReset" type="button" class="reset-btn">Reset</button>
-            </div>
-            <div class="control direction-control">
-              <label>Rotate Z
-                <span class="direction-values">
-                  <span id="directionZVal"></span>
-                </span>
-              </label>
-              <div id="directionZWheel" class="direction-wheel" role="slider" aria-label="Rotate Z">
-                <div id="directionZDot" class="direction-wheel-dot"></div>
-              </div>
-              <button id="directionZReset" type="button" class="reset-btn">Reset</button>
-            </div>
           </div>
         </div>
       </div>
@@ -479,41 +511,80 @@
             <button id="forcesEnabled" class="pill-toggle" type="button" data-state="on">On</button>
           </div>
           <div id="forcesControls" class="control-stack">
-            <div class="control">
-              <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
-              <input id="turbulence" type="range" min="0" max="3" step="0.1" data-default="1.2" />
+            <div class="control select-control">
+              <label for="forceMode">Noise Mode</label>
+              <select id="forceMode">
+                <option value="turbulence">Turbulence</option>
+                <option value="curl">Curl Noise</option>
+              </select>
+            </div>
+            <div id="turbulenceControls" class="control-stack">
+              <div class="control">
+                <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
+                <input id="turbulence" type="range" min="0" max="100" step="0.1" data-default="1.2" />
+              </div>
+              <div class="control">
+                <label for="turbulenceScale">Turbulence Scale <span id="turbulenceScaleVal"></span></label>
+                <input id="turbulenceScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
+              </div>
+            </div>
+            <div id="curlControls" class="control-stack">
+              <div class="control">
+                <label for="curlStrength">Curl Strength <span id="curlStrengthVal"></span></label>
+                <input id="curlStrength" type="range" min="0" max="100" step="0.1" data-default="1.2" />
+              </div>
+              <div class="control">
+                <label for="curlScale">Curl Scale <span id="curlScaleVal"></span></label>
+                <input id="curlScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
+              </div>
             </div>
             <div class="control">
-              <label for="zTurbulence">Z Turbulence <span id="zTurbulenceVal"></span></label>
-              <input id="zTurbulence" type="range" min="0" max="3" step="0.1" data-default="1.6" />
+              <label for="vortexEnabled">Vortex</label>
+              <button id="vortexEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
+            <div id="vortexControls" class="control-stack">
+              <div class="control">
+                <label for="vortexStrength">Vortex Strength <span id="vortexStrengthVal"></span></label>
+                <input id="vortexStrength" type="range" min="0" max="100" step="0.1" data-default="1.8" />
+              </div>
+              <div class="control">
+                <label for="vortexRadius">Vortex Radius <span id="vortexRadiusVal"></span></label>
+                <input id="vortexRadius" type="range" min="0.1" max="100" step="0.1" data-default="1.5" />
+              </div>
+            </div>
+            <div class="control">
+              <label for="attractorEnabled">Attractor</label>
+              <button id="attractorEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
+            <div id="attractorControls" class="control-stack">
+              <div class="control">
+                <label for="attractorStrength">Attractor Strength <span id="attractorStrengthVal"></span></label>
+                <input id="attractorStrength" type="range" min="0" max="100" step="0.1" data-default="0" />
+              </div>
+              <div class="control">
+                <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
+                <input id="attractorRadius" type="range" min="0" max="100" step="0.1" data-default="0" />
+              </div>
             </div>
             <div class="control">
               <label for="gravity">Gravity <span id="gravityVal"></span></label>
-              <input id="gravity" type="range" min="-2" max="2" step="0.05" data-default="-0.2" />
+              <input id="gravity" type="range" min="-100" max="100" step="0.1" data-default="-0.2" />
             </div>
             <div class="control">
               <label for="windX">Wind X <span id="windXVal"></span></label>
-              <input id="windX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="windX" type="range" min="-100" max="100" step="0.1" data-default="0" />
             </div>
             <div class="control">
               <label for="windY">Wind Y <span id="windYVal"></span></label>
-              <input id="windY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="windY" type="range" min="-100" max="100" step="0.1" data-default="0" />
             </div>
             <div class="control">
               <label for="windZ">Wind Z <span id="windZVal"></span></label>
-              <input id="windZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="windZ" type="range" min="-100" max="100" step="0.1" data-default="0" />
             </div>
             <div class="control">
               <label for="drag">Drag <span id="dragVal"></span></label>
-              <input id="drag" type="range" min="0" max="2" step="0.05" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="attractorStrength">Attractor Strength <span id="attractorStrengthVal"></span></label>
-              <input id="attractorStrength" type="range" min="0" max="5" step="0.1" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
-              <input id="attractorRadius" type="range" min="0" max="6" step="0.1" data-default="0" />
+              <input id="drag" type="range" min="0" max="100" step="0.1" data-default="0" />
             </div>
             <div class="control">
               <label for="groundEnabled">Ground Collision</label>
