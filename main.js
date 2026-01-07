@@ -2610,12 +2610,15 @@ function normalizeAngle(angle) {
 
 function updateWheel(wheel, dot, angleDeg) {
   if (!wheel || !dot) return;
-  const radius = wheel.clientWidth * 0.5;
+  // Use percentage-based positioning for reliability across screen sizes
+  // Convert angle to position on circle (0° = top, clockwise)
   const angle = ((angleDeg - 90) * Math.PI) / 180;
-  const x = Math.cos(angle) * radius;
-  const y = Math.sin(angle) * radius;
-  dot.style.left = `${radius + x}px`;
-  dot.style.top = `${radius + y}px`;
+  const x = Math.cos(angle);
+  const y = Math.sin(angle);
+  // Position using calc() with percentages - center is 50%, radius is ~40% to account for dot size
+  const radius = 40; // percentage of wheel size
+  dot.style.left = `calc(50% + ${x * radius}%)`;
+  dot.style.top = `calc(50% + ${y * radius}%)`;
 }
 
 function updateDirectionUI() {
@@ -2781,7 +2784,14 @@ if (vortexRotZReset) {
     updateDirectionUI();
   });
 }
-updateDirectionUI();
+// Initial update - use requestAnimationFrame to ensure DOM is laid out
+requestAnimationFrame(() => {
+  updateDirectionUI();
+});
+// Also update after window fully loads (for mobile where sizes may change)
+window.addEventListener("load", () => {
+  updateDirectionUI();
+});
 
 const baseColorInput = document.getElementById("baseColor");
 const baseColorVal = document.getElementById("baseColorVal");
@@ -2875,7 +2885,6 @@ function attachSliderResets() {
     const input = control.querySelector('input[type="range"]');
     if (!input || !input.dataset.default) return;
     if (control.querySelector(".reset-btn")) return;
-    control.classList.add("range-control");
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "reset-btn";
@@ -2889,44 +2898,122 @@ function attachSliderResets() {
 }
 attachSliderResets();
 
-function setupRangeControls() {
-  document.querySelectorAll(".control").forEach((control) => {
-    const input = control.querySelector('input[type="range"]');
-    if (!input) return;
-    control.classList.add("range-control");
-    control.classList.remove("expanded");
+function setupSettingCollapsibles() {
+  document.querySelectorAll(".panel-content .control").forEach((control) => {
+    // Skip direction controls (they're inside rotation groups)
+    if (control.classList.contains("direction-control")) return;
+    
     const label = control.querySelector("label");
     if (!label || label.dataset.toggleBound) return;
     label.dataset.toggleBound = "true";
-    const valueEl = label.querySelector(".editable-value");
+    control.classList.add("setting");
+    control.classList.remove("expanded");
+
+    const body = document.createElement("div");
+    body.className = "control-body";
+    const nodes = Array.from(control.childNodes);
+    nodes.forEach((node) => {
+      if (node === label) return;
+      body.appendChild(node);
+    });
+    control.appendChild(body);
+    if (body.querySelector('input[type="range"]')) {
+      body.classList.add("range-body");
+    }
+
+    // Find value element in label (span with id ending in "Val" or .editable-value)
+    const valueEl = label.querySelector("span[id$='Val']") || label.querySelector(".editable-value");
+    
+    // Move value element to control-body if it exists
+    if (valueEl && valueEl.parentNode === label) {
+      // Create a value-row to hold value and reset button
+      const valueRow = document.createElement("div");
+      valueRow.className = "value-row";
+      valueRow.appendChild(valueEl);
+      
+      // Move reset button next to value if it exists in body
+      const resetBtn = body.querySelector(".reset-btn");
+      if (resetBtn) {
+        valueRow.appendChild(resetBtn);
+      }
+      
+      // Add value row to body (after the input)
+      body.appendChild(valueRow);
+    }
+
+    // Create label-left wrapper for remaining label content
     if (!label.querySelector(".label-left")) {
       const leftWrap = document.createElement("span");
       leftWrap.className = "label-left";
-      const nodes = Array.from(label.childNodes);
-      nodes.forEach((node) => {
-        if (node === valueEl) return;
+      const labelNodes = Array.from(label.childNodes);
+      labelNodes.forEach((node) => {
+        if (
+          node.nodeType === 1 &&
+          (node.classList.contains("direction-values") ||
+            node.classList.contains("reset-btn") ||
+            node.classList.contains("direction-reset") ||
+            node.classList.contains("editable-value"))
+        ) {
+          return;
+        }
         leftWrap.appendChild(node);
       });
-      label.insertBefore(leftWrap, valueEl || null);
+      label.prepend(leftWrap);
     }
+    
+    // Add collapse indicator (+/- circle button)
     if (!label.querySelector(".collapse-indicator")) {
-      const indicator = document.createElement("span");
+      const indicator = document.createElement("button");
+      indicator.type = "button";
       indicator.className = "collapse-indicator";
-      indicator.textContent = "▸";
-      const leftWrap = label.querySelector(".label-left");
-      if (leftWrap) {
-        leftWrap.appendChild(indicator);
-      } else {
-        label.appendChild(indicator);
-      }
+      indicator.setAttribute("aria-label", "Toggle setting");
+      const textSpan = document.createElement("span");
+      textSpan.textContent = "+";
+      indicator.appendChild(textSpan);
+      const leftWrap = label.querySelector(".label-left") || label;
+      leftWrap.appendChild(indicator);
     }
+
+    const indicator = label.querySelector(".collapse-indicator");
+    const indicatorText = indicator ? indicator.querySelector("span") : null;
+    
+    // Handle collapse button click
+    if (indicator && indicatorText) {
+      indicator.addEventListener("click", (event) => {
+        event.stopPropagation();
+        control.classList.toggle("expanded");
+        indicatorText.textContent = control.classList.contains("expanded") ? "−" : "+";
+        if (control.classList.contains("expanded")) {
+          sizeCurveEditor.resize();
+          opacityCurveEditor.resize();
+          gradientEditor.resize();
+        }
+      });
+    }
+    
+    // Handle label click (but not on the button itself)
     label.addEventListener("click", (event) => {
-      if (event.target.classList.contains("editable-value")) return;
+      // Don't toggle if clicking on interactive elements within the control body or the collapse button
+      const target = event.target;
+      if (target.closest(".control-body") || 
+          (target.closest("button") && !target.closest(".collapse-indicator")) || 
+          target.closest(".editable-value")) {
+        return;
+      }
+      event.preventDefault();
       control.classList.toggle("expanded");
+      if (indicatorText) {
+        indicatorText.textContent = control.classList.contains("expanded") ? "−" : "+";
+      }
+      if (control.classList.contains("expanded")) {
+        sizeCurveEditor.resize();
+        opacityCurveEditor.resize();
+        gradientEditor.resize();
+      }
     });
   });
 }
-setupRangeControls();
+setupSettingCollapsibles();
 
 function setupEditableNumber(element, options) {
   const { getValue, setValue, min, max, step, formatDisplay, formatEdit } = options;
@@ -3047,15 +3134,40 @@ function setupRangeValueEditors() {
 }
 setupRangeValueEditors();
 
-document.querySelectorAll(".panel-header").forEach((header) => {
-  header.addEventListener("click", () => {
-    const panel = header.closest(".panel");
-    const toggle = header.querySelector(".panel-toggle");
-    panel.classList.toggle("collapsed");
-    toggle.textContent = panel.classList.contains("collapsed") ? "▸" : "▾";
-    sizeCurveEditor.resize();
-    opacityCurveEditor.resize();
-    gradientEditor.resize();
+// Sidebar panel toggle logic
+let currentOpenPanel = null;
+
+function closeCurrentPanel() {
+  if (currentOpenPanel) {
+    currentOpenPanel.panel.classList.remove("active");
+    currentOpenPanel.btn.classList.remove("active");
+    currentOpenPanel = null;
+  }
+}
+
+document.querySelectorAll(".sidebar-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const panelName = btn.dataset.panel;
+    const panel = document.querySelector(`.panel[data-panel="${panelName}"]`);
+    
+    // Close current panel if open
+    if (currentOpenPanel) {
+      currentOpenPanel.panel.classList.remove("active");
+      currentOpenPanel.btn.classList.remove("active");
+    }
+    
+    // Toggle: if clicking same button, just close; otherwise open new
+    if (currentOpenPanel?.panelName === panelName) {
+      currentOpenPanel = null;
+    } else {
+      panel.classList.add("active");
+      btn.classList.add("active");
+      currentOpenPanel = { panelName, panel, btn };
+      // Resize editors when panel opens
+      sizeCurveEditor.resize();
+      opacityCurveEditor.resize();
+      gradientEditor.resize();
+    }
   });
 });
 
