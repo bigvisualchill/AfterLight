@@ -28,6 +28,13 @@ let attractorStrength = 0.0;
 let attractorRadius = 0.0;
 let attractorEnabled = false;
 let emitterGizmoEnabled = false;
+let vortexGizmoEnabled = false;
+let attractorGizmoEnabled = false;
+let vortexPos = [0, 0, 0];
+let attractorPos = [0, 0, 0];
+let vortexRotX = 0;
+let vortexRotY = 0;
+let vortexRotZ = 0;
 let groundLevel = -1.0;
 let bounce = 0.2;
 let groundEnabled = true;
@@ -193,6 +200,9 @@ function applyEmitterRotation(point) {
 
 function worldToScreen(pos) {
   const x = pos[0], y = pos[1], z = pos[2];
+  const rect = (gizmoCanvas || canvas).getBoundingClientRect();
+  const width = rect.width || gizmoSize.width || canvas.clientWidth;
+  const height = rect.height || gizmoSize.height || canvas.clientHeight;
   const w =
     viewProj[3] * x +
     viewProj[7] * y +
@@ -211,8 +221,8 @@ function worldToScreen(pos) {
     viewProj[13];
   const ndcX = clipX / w;
   const ndcY = clipY / w;
-  const sx = (ndcX * 0.5 + 0.5) * gizmoSize.width;
-  const sy = (-ndcY * 0.5 + 0.5) * gizmoSize.height;
+  const sx = (ndcX * 0.5 + 0.5) * width;
+  const sy = (-ndcY * 0.5 + 0.5) * height;
   return [sx, sy];
 }
 
@@ -1164,7 +1174,9 @@ function worldUnitsPerPixelAt(position) {
   const dz = position[2] - eye[2];
   const depth = Math.max(0.1, dx * cameraForward[0] + dy * cameraForward[1] + dz * cameraForward[2]);
   const viewHeight = 2 * depth * Math.tan(CAMERA_FOV * 0.5);
-  return viewHeight / Math.max(1, canvas.height);
+  // Use CSS height (gizmoSize.height) since drag delta is in CSS pixels
+  const cssHeight = gizmoSize.height || canvas.clientHeight || canvas.height;
+  return viewHeight / Math.max(1, cssHeight);
 }
 
 function drawEmitterWireframe(color, lineWidth) {
@@ -1243,24 +1255,93 @@ function drawEmitterWireframe(color, lineWidth) {
   gizmoCtx.stroke();
 }
 
-function drawEmitterGizmo() {
-  if (!gizmoCtx) return;
-  gizmoCtx.clearRect(0, 0, gizmoSize.width, gizmoSize.height);
-  if (!emitterGizmoEnabled) return;
-  const wireColor = "rgba(140, 210, 255, 0.9)";
-  const lineWidth = 1.2;
-  drawEmitterWireframe(wireColor, lineWidth);
+function applyRotation(point, rotX, rotY, rotZ) {
+  let p = rotateX(point, rotX);
+  p = rotateY(p, rotY);
+  p = rotateZ(p, rotZ);
+  return p;
+}
 
-  const origin = [emitterPos[0], emitterPos[1], emitterPos[2]];
-  const handleLen = Math.max(0.3, emitterSize * 1.2);
-  const axes = [
-    { axis: [1, 0, 0], color: "rgba(255, 90, 90, 0.95)" },
-    { axis: [0, 1, 0], color: "rgba(90, 255, 140, 0.95)" },
-    { axis: [0, 0, 1], color: "rgba(90, 160, 255, 0.95)" },
-  ];
+function drawWireframeSphere(center, radius, color, lineWidth) {
+  const segments = [];
+  const rings = 24;
+  for (let i = 0; i < rings; i += 1) {
+    const a0 = (i / rings) * Math.PI * 2;
+    const a1 = ((i + 1) / rings) * Math.PI * 2;
+    const c0 = Math.cos(a0) * radius;
+    const s0 = Math.sin(a0) * radius;
+    const c1 = Math.cos(a1) * radius;
+    const s1 = Math.sin(a1) * radius;
+    segments.push([[center[0] + c0, center[1] + s0, center[2]], [center[0] + c1, center[1] + s1, center[2]]]);
+    segments.push([[center[0], center[1] + c0, center[2] + s0], [center[0], center[1] + c1, center[2] + s1]]);
+    segments.push([[center[0] + c0, center[1], center[2] + s0], [center[0] + c1, center[1], center[2] + s1]]);
+  }
+  gizmoCtx.strokeStyle = color;
   gizmoCtx.lineWidth = lineWidth;
-  axes.forEach(({ axis, color }) => {
-    const rotatedAxis = applyEmitterRotation(axis);
+  gizmoCtx.beginPath();
+  segments.forEach(([a, b]) => {
+    const sa = worldToScreen(a);
+    const sb = worldToScreen(b);
+    if (!sa || !sb) return;
+    gizmoCtx.moveTo(sa[0], sa[1]);
+    gizmoCtx.lineTo(sb[0], sb[1]);
+  });
+  gizmoCtx.stroke();
+}
+
+function drawWireframeRing(center, radius, rotX, rotY, rotZ, color, lineWidth) {
+  const axis = applyRotation([0, 1, 0], rotX, rotY, rotZ);
+  const up = Math.abs(axis[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = normalizeVec3([
+    up[1] * axis[2] - up[2] * axis[1],
+    up[2] * axis[0] - up[0] * axis[2],
+    up[0] * axis[1] - up[1] * axis[0],
+  ]);
+  const v = normalizeVec3([
+    axis[1] * u[2] - axis[2] * u[1],
+    axis[2] * u[0] - axis[0] * u[2],
+    axis[0] * u[1] - axis[1] * u[0],
+  ]);
+  const segments = [];
+  const rings = 32;
+  for (let i = 0; i < rings; i += 1) {
+    const a0 = (i / rings) * Math.PI * 2;
+    const a1 = ((i + 1) / rings) * Math.PI * 2;
+    const p0 = [
+      center[0] + (u[0] * Math.cos(a0) + v[0] * Math.sin(a0)) * radius,
+      center[1] + (u[1] * Math.cos(a0) + v[1] * Math.sin(a0)) * radius,
+      center[2] + (u[2] * Math.cos(a0) + v[2] * Math.sin(a0)) * radius,
+    ];
+    const p1 = [
+      center[0] + (u[0] * Math.cos(a1) + v[0] * Math.sin(a1)) * radius,
+      center[1] + (u[1] * Math.cos(a1) + v[1] * Math.sin(a1)) * radius,
+      center[2] + (u[2] * Math.cos(a1) + v[2] * Math.sin(a1)) * radius,
+    ];
+    segments.push([p0, p1]);
+  }
+  gizmoCtx.strokeStyle = color;
+  gizmoCtx.lineWidth = lineWidth;
+  gizmoCtx.beginPath();
+  segments.forEach(([a, b]) => {
+    const sa = worldToScreen(a);
+    const sb = worldToScreen(b);
+    if (!sa || !sb) return;
+    gizmoCtx.moveTo(sa[0], sa[1]);
+    gizmoCtx.lineTo(sb[0], sb[1]);
+  });
+  gizmoCtx.stroke();
+}
+
+const GIZMO_HANDLE_SIZE = 14; // Size of the square handle in pixels
+
+function drawAxisHandles(origin, rotX, rotY, rotZ, handleLen, lineWidth) {
+  const axes = [
+    { axis: [1, 0, 0], color: "rgba(255, 90, 90, 0.95)", hoverColor: "rgba(255, 150, 150, 1)" },
+    { axis: [0, 1, 0], color: "rgba(90, 255, 140, 0.95)", hoverColor: "rgba(150, 255, 180, 1)" },
+    { axis: [0, 0, 1], color: "rgba(90, 160, 255, 0.95)", hoverColor: "rgba(150, 200, 255, 1)" },
+  ];
+  axes.forEach(({ axis, color, hoverColor }, idx) => {
+    const rotatedAxis = applyRotation(axis, rotX, rotY, rotZ);
     const end = [
       origin[0] + rotatedAxis[0] * handleLen,
       origin[1] + rotatedAxis[1] * handleLen,
@@ -1269,41 +1350,58 @@ function drawEmitterGizmo() {
     const so = worldToScreen(origin);
     const se = worldToScreen(end);
     if (!so || !se) return;
+    
+    // Draw the axis line
     gizmoCtx.strokeStyle = color;
+    gizmoCtx.lineWidth = lineWidth + 1;
     gizmoCtx.beginPath();
     gizmoCtx.moveTo(so[0], so[1]);
     gizmoCtx.lineTo(se[0], se[1]);
     gizmoCtx.stroke();
-    gizmoCtx.fillStyle = color;
-    gizmoCtx.beginPath();
-    gizmoCtx.arc(se[0], se[1], 4, 0, Math.PI * 2);
-    gizmoCtx.fill();
-    const dir = [se[0] - so[0], se[1] - so[1]];
-    const len = Math.hypot(dir[0], dir[1]) || 1;
-    const ux = dir[0] / len;
-    const uy = dir[1] / len;
-    const perp = [-uy, ux];
-    const arrowSize = 6;
-    const tip = [se[0] + ux * arrowSize, se[1] + uy * arrowSize];
-    const left = [
-      se[0] - ux * arrowSize + perp[0] * (arrowSize * 0.6),
-      se[1] - uy * arrowSize + perp[1] * (arrowSize * 0.6),
-    ];
-    const right = [
-      se[0] - ux * arrowSize - perp[0] * (arrowSize * 0.6),
-      se[1] - uy * arrowSize - perp[1] * (arrowSize * 0.6),
-    ];
-    gizmoCtx.beginPath();
-    gizmoCtx.moveTo(tip[0], tip[1]);
-    gizmoCtx.lineTo(left[0], left[1]);
-    gizmoCtx.lineTo(right[0], right[1]);
-    gizmoCtx.closePath();
-    gizmoCtx.fill();
+    
+    // Draw a larger square handle at the end
+    const halfSize = GIZMO_HANDLE_SIZE / 2;
+    const isHovered = gizmoHoverAxis && gizmoHoverAxis[0] === rotatedAxis[0] && 
+                      gizmoHoverAxis[1] === rotatedAxis[1] && gizmoHoverAxis[2] === rotatedAxis[2];
+    
+    // Draw handle border/glow when hovered
+    if (isHovered) {
+      gizmoCtx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      gizmoCtx.fillRect(se[0] - halfSize - 2, se[1] - halfSize - 2, GIZMO_HANDLE_SIZE + 4, GIZMO_HANDLE_SIZE + 4);
+    }
+    
+    // Draw the handle square
+    gizmoCtx.fillStyle = isHovered ? hoverColor : color;
+    gizmoCtx.fillRect(se[0] - halfSize, se[1] - halfSize, GIZMO_HANDLE_SIZE, GIZMO_HANDLE_SIZE);
+    
+    // Draw border
+    gizmoCtx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    gizmoCtx.lineWidth = 1;
+    gizmoCtx.strokeRect(se[0] - halfSize, se[1] - halfSize, GIZMO_HANDLE_SIZE, GIZMO_HANDLE_SIZE);
   });
 }
 
+function drawEmitterGizmo() {
+  if (!gizmoCtx) return;
+  gizmoCtx.clearRect(0, 0, gizmoSize.width, gizmoSize.height);
+  const wireColor = "rgba(140, 210, 255, 0.9)";
+  const lineWidth = 1.2;
+  if (emitterGizmoEnabled) {
+    drawEmitterWireframe(wireColor, lineWidth);
+    drawAxisHandles(emitterPos, directionRotX * Math.PI / 180, directionRotY * Math.PI / 180, directionRotZ * Math.PI / 180, Math.max(0.3, emitterSize * 1.2), lineWidth);
+  }
+  if (vortexGizmoEnabled) {
+    drawWireframeRing(vortexPos, Math.max(0.05, vortexRadius), vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180, wireColor, lineWidth);
+    drawAxisHandles(vortexPos, vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180, Math.max(0.3, vortexRadius * 1.2), lineWidth);
+  }
+  if (attractorGizmoEnabled) {
+    drawWireframeSphere(attractorPos, Math.max(0.05, attractorRadius), wireColor, lineWidth);
+    drawAxisHandles(attractorPos, 0, 0, 0, Math.max(0.3, attractorRadius * 1.2), lineWidth);
+  }
+}
+
 function getPointerPosition(event) {
-  const rect = canvas.getBoundingClientRect();
+  const rect = (gizmoCanvas || canvas).getBoundingClientRect();
   return [event.clientX - rect.left, event.clientY - rect.top];
 }
 
@@ -1322,42 +1420,197 @@ function updateEmitterPosInputs() {
   }
 }
 
+function updateVortexPosInputs() {
+  if (vortexPosXInput) {
+    vortexPosXInput.value = String(vortexPos[0]);
+    vortexPosXInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (vortexPosYInput) {
+    vortexPosYInput.value = String(vortexPos[1]);
+    vortexPosYInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (vortexPosZInput) {
+    vortexPosZInput.value = String(vortexPos[2]);
+    vortexPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function updateAttractorPosInputs() {
+  if (attractorPosXInput) {
+    attractorPosXInput.value = String(attractorPos[0]);
+    attractorPosXInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (attractorPosYInput) {
+    attractorPosYInput.value = String(attractorPos[1]);
+    attractorPosYInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (attractorPosZInput) {
+    attractorPosZInput.value = String(attractorPos[2]);
+    attractorPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+// Get all gizmo handle candidates for hit testing
+function getGizmoHandleCandidates() {
+  const candidates = [];
+  const axes = [
+    { axis: [1, 0, 0] },
+    { axis: [0, 1, 0] },
+    { axis: [0, 0, 1] },
+  ];
+  if (emitterGizmoEnabled) {
+    const origin = [emitterPos[0], emitterPos[1], emitterPos[2]];
+    const handleLen = Math.max(0.3, emitterSize * 1.2);
+    axes.forEach(({ axis }) => {
+      const rotatedAxis = applyRotation(axis, directionRotX * Math.PI / 180, directionRotY * Math.PI / 180, directionRotZ * Math.PI / 180);
+      const end = [
+        origin[0] + rotatedAxis[0] * handleLen,
+        origin[1] + rotatedAxis[1] * handleLen,
+        origin[2] + rotatedAxis[2] * handleLen,
+      ];
+      const se = worldToScreen(end);
+      const so = worldToScreen(origin);
+      if (!se || !so) return;
+      candidates.push({ target: "emitter", axis: rotatedAxis, so, se });
+    });
+  }
+  if (vortexGizmoEnabled) {
+    const origin = [vortexPos[0], vortexPos[1], vortexPos[2]];
+    const handleLen = Math.max(0.3, vortexRadius * 1.2);
+    axes.forEach(({ axis }) => {
+      const rotatedAxis = applyRotation(axis, vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180);
+      const end = [
+        origin[0] + rotatedAxis[0] * handleLen,
+        origin[1] + rotatedAxis[1] * handleLen,
+        origin[2] + rotatedAxis[2] * handleLen,
+      ];
+      const se = worldToScreen(end);
+      const so = worldToScreen(origin);
+      if (!se || !so) return;
+      candidates.push({ target: "vortex", axis: rotatedAxis, so, se });
+    });
+  }
+  if (attractorGizmoEnabled) {
+    const origin = [attractorPos[0], attractorPos[1], attractorPos[2]];
+    const handleLen = Math.max(0.3, attractorRadius * 1.2);
+    axes.forEach(({ axis }) => {
+      const end = [
+        origin[0] + axis[0] * handleLen,
+        origin[1] + axis[1] * handleLen,
+        origin[2] + axis[2] * handleLen,
+      ];
+      const se = worldToScreen(end);
+      const so = worldToScreen(origin);
+      if (!se || !so) return;
+      candidates.push({ target: "attractor", axis, so, se });
+    });
+  }
+  return candidates;
+}
+
+// Check if a point is inside a handle's square hit area
+function isPointInHandle(px, py, handleX, handleY) {
+  const halfSize = GIZMO_HANDLE_SIZE / 2 + 6; // Add generous padding for easier clicking
+  return px >= handleX - halfSize && px <= handleX + halfSize &&
+         py >= handleY - halfSize && py <= handleY + halfSize;
+}
+
+// Find which handle (if any) is at the given pointer position
+function findHandleAtPoint(pointer) {
+  const candidates = getGizmoHandleCandidates();
+  for (const item of candidates) {
+    if (isPointInHandle(pointer[0], pointer[1], item.se[0], item.se[1])) {
+      return item;
+    }
+  }
+  return null;
+}
+
+// Update hover state based on pointer position
+function updateGizmoHover(event) {
+  const canHoverGizmo = emitterGizmoEnabled || vortexGizmoEnabled || attractorGizmoEnabled;
+  if (!canHoverGizmo || !gizmoCanvas) {
+    if (gizmoHoverAxis !== null) {
+      gizmoHoverAxis = null;
+      gizmoHoverTarget = null;
+      gizmoCanvas.style.cursor = "";
+      document.body.style.cursor = "";
+    }
+    return;
+  }
+  
+  const pointer = getPointerPosition(event);
+  const hit = findHandleAtPoint(pointer);
+  
+  if (hit) {
+    gizmoHoverAxis = hit.axis;
+    gizmoHoverTarget = hit.target;
+    gizmoCanvas.style.cursor = "grab";
+    document.body.style.cursor = "grab";
+  } else {
+    gizmoHoverAxis = null;
+    gizmoHoverTarget = null;
+    gizmoCanvas.style.cursor = "";
+    document.body.style.cursor = "";
+  }
+}
+
 function startGizmoDrag(event) {
   if (!gizmoCtx) return false;
   const pointer = getPointerPosition(event);
-  const origin = [emitterPos[0], emitterPos[1], emitterPos[2]];
-  const handleLen = Math.max(0.3, emitterSize * 1.2);
-  const axes = [
-    { name: "x", axis: [1, 0, 0] },
-    { name: "y", axis: [0, 1, 0] },
-    { name: "z", axis: [0, 0, 1] },
-  ];
+  
+  // First check if we clicked on a handle square
+  const hit = findHandleAtPoint(pointer);
+  if (hit) {
+    const dir = [hit.se[0] - hit.so[0], hit.se[1] - hit.so[1]];
+    const len = Math.hypot(dir[0], dir[1]) || 1;
+    gizmoDragDir = [dir[0] / len, dir[1] / len];
+    gizmoDragAxis = hit.axis;
+    gizmoDragTarget = hit.target;
+    gizmoLastPointer = [pointer[0], pointer[1]];
+    gizmoDragStartPointer = [pointer[0], pointer[1]];
+    // Store the initial world position
+    let targetPos = emitterPos;
+    if (gizmoDragTarget === "vortex") targetPos = vortexPos;
+    if (gizmoDragTarget === "attractor") targetPos = attractorPos;
+    gizmoDragStartPos = [targetPos[0], targetPos[1], targetPos[2]];
+    gizmoDragging = true;
+    if (gizmoCanvas) gizmoCanvas.style.cursor = "grabbing";
+    document.body.style.cursor = "grabbing";
+    return true;
+  }
+  
+  // Fall back to line-based hit detection for clicking on the axis lines
+  const candidates = getGizmoHandleCandidates();
   let best = null;
   let bestDist = Infinity;
-  axes.forEach(({ name, axis }) => {
-    const rotatedAxis = applyEmitterRotation(axis);
-    const end = [
-      origin[0] + rotatedAxis[0] * handleLen,
-      origin[1] + rotatedAxis[1] * handleLen,
-      origin[2] + rotatedAxis[2] * handleLen,
-    ];
-    const se = worldToScreen(end);
-    const so = worldToScreen(origin);
-    if (!se || !so) return;
-    const dx = pointer[0] - se[0];
-    const dy = pointer[1] - se[1];
-    const dist = Math.hypot(dx, dy);
+  candidates.forEach((item) => {
+    const dx = pointer[0] - item.se[0];
+    const dy = pointer[1] - item.se[1];
+    const distToDot = Math.hypot(dx, dy);
+    const vx = item.se[0] - item.so[0];
+    const vy = item.se[1] - item.so[1];
+    const len2 = vx * vx + vy * vy;
+    let distToLine = distToDot;
+    if (len2 > 1e-4) {
+      const t = Math.max(0, Math.min(1, ((pointer[0] - item.so[0]) * vx + (pointer[1] - item.so[1]) * vy) / len2));
+      const projX = item.so[0] + vx * t;
+      const projY = item.so[1] + vy * t;
+      distToLine = Math.hypot(pointer[0] - projX, pointer[1] - projY);
+    }
+    const dist = Math.min(distToDot, distToLine);
     if (dist < bestDist) {
       bestDist = dist;
-      best = { name, axis: rotatedAxis, so, se };
+      best = item;
     }
   });
-  if (!best || bestDist > 10) return false;
+  if (!best || bestDist > 30) return false;
   const dir = [best.se[0] - best.so[0], best.se[1] - best.so[1]];
   const len = Math.hypot(dir[0], dir[1]) || 1;
   gizmoDragDir = [dir[0] / len, dir[1] / len];
   gizmoDragAxis = best.axis;
   gizmoLastPointer = pointer;
+  gizmoDragTarget = best.target;
   gizmoDragging = true;
   return true;
 }
@@ -1365,15 +1618,50 @@ function startGizmoDrag(event) {
 function updateGizmoDrag(event) {
   if (!gizmoDragging || !gizmoDragAxis) return;
   const pointer = getPointerPosition(event);
-  const dx = pointer[0] - gizmoLastPointer[0];
-  const dy = pointer[1] - gizmoLastPointer[1];
-  const projected = dx * gizmoDragDir[0] + dy * gizmoDragDir[1];
-  const deltaWorld = projected * worldUnitsPerPixelAt(emitterPos);
-  emitterPos[0] += gizmoDragAxis[0] * deltaWorld;
-  emitterPos[1] += gizmoDragAxis[1] * deltaWorld;
-  emitterPos[2] += gizmoDragAxis[2] * deltaWorld;
-  gizmoLastPointer = pointer;
-  updateEmitterPosInputs();
+  
+  // Get target position reference
+  let targetPos = emitterPos;
+  if (gizmoDragTarget === "vortex") targetPos = vortexPos;
+  if (gizmoDragTarget === "attractor") targetPos = attractorPos;
+  
+  // Calculate total movement from drag start (not from last frame)
+  const totalDx = pointer[0] - gizmoDragStartPointer[0];
+  const totalDy = pointer[1] - gizmoDragStartPointer[1];
+  
+  // Get the screen direction of the axis at the START position
+  // This ensures consistent mapping throughout the drag
+  const axisEnd = [
+    gizmoDragStartPos[0] + gizmoDragAxis[0],
+    gizmoDragStartPos[1] + gizmoDragAxis[1],
+    gizmoDragStartPos[2] + gizmoDragAxis[2],
+  ];
+  const so = worldToScreen(gizmoDragStartPos);
+  const se = worldToScreen(axisEnd);
+  
+  if (!so || !se) return;
+  
+  // Screen direction of the axis (1 world unit)
+  const axisDirX = se[0] - so[0];
+  const axisDirY = se[1] - so[1];
+  const axisScreenLen = Math.hypot(axisDirX, axisDirY);
+  
+  if (axisScreenLen < 1) return; // Axis is nearly perpendicular to view
+  
+  // Project total mouse movement onto axis direction and convert to world units
+  const worldOffset = (totalDx * axisDirX + totalDy * axisDirY) / (axisScreenLen * axisScreenLen);
+  
+  // Set position absolutely from start position + offset
+  targetPos[0] = gizmoDragStartPos[0] + gizmoDragAxis[0] * worldOffset;
+  targetPos[1] = gizmoDragStartPos[1] + gizmoDragAxis[1] * worldOffset;
+  targetPos[2] = gizmoDragStartPos[2] + gizmoDragAxis[2] * worldOffset;
+  
+  if (gizmoDragTarget === "emitter") {
+    updateEmitterPosInputs();
+  } else if (gizmoDragTarget === "vortex") {
+    updateVortexPosInputs();
+  } else if (gizmoDragTarget === "attractor") {
+    updateAttractorPosInputs();
+  }
 }
 
 updateCamera(0);
@@ -1953,6 +2241,18 @@ bindRange("vortexRadius", "vortexRadiusVal", () => vortexRadius, (v) => {
   vortexRadius = Math.max(0.1, v);
   return vortexRadius;
 });
+bindRange("vortexPosX", "vortexPosXVal", () => vortexPos[0], (v) => {
+  vortexPos[0] = v;
+  return vortexPos[0];
+});
+bindRange("vortexPosY", "vortexPosYVal", () => vortexPos[1], (v) => {
+  vortexPos[1] = v;
+  return vortexPos[1];
+});
+bindRange("vortexPosZ", "vortexPosZVal", () => vortexPos[2], (v) => {
+  vortexPos[2] = v;
+  return vortexPos[2];
+});
 bindRange("gravity", "gravityVal", () => gravity, (v) => {
   gravity = v;
   return gravity;
@@ -1980,6 +2280,18 @@ bindRange("attractorStrength", "attractorStrengthVal", () => attractorStrength, 
 bindRange("attractorRadius", "attractorRadiusVal", () => attractorRadius, (v) => {
   attractorRadius = Math.max(0, v);
   return attractorRadius;
+});
+bindRange("attractorPosX", "attractorPosXVal", () => attractorPos[0], (v) => {
+  attractorPos[0] = v;
+  return attractorPos[0];
+});
+bindRange("attractorPosY", "attractorPosYVal", () => attractorPos[1], (v) => {
+  attractorPos[1] = v;
+  return attractorPos[1];
+});
+bindRange("attractorPosZ", "attractorPosZVal", () => attractorPos[2], (v) => {
+  attractorPos[2] = v;
+  return attractorPos[2];
 });
 bindRange("groundLevel", "groundLevelVal", () => groundLevel, (v) => {
   groundLevel = v;
@@ -2034,6 +2346,22 @@ attractorToggle.addEventListener("click", () => {
   attractorEnabled = !attractorEnabled;
   setToggleState(attractorToggle, attractorEnabled);
   updateForceModeUI();
+});
+
+const vortexGizmoToggle = document.getElementById("vortexGizmo");
+setToggleState(vortexGizmoToggle, vortexGizmoEnabled);
+vortexGizmoToggle.addEventListener("click", () => {
+  vortexGizmoEnabled = !vortexGizmoEnabled;
+  setToggleState(vortexGizmoToggle, vortexGizmoEnabled);
+  drawEmitterGizmo();
+});
+
+const attractorGizmoToggle = document.getElementById("attractorGizmo");
+setToggleState(attractorGizmoToggle, attractorGizmoEnabled);
+attractorGizmoToggle.addEventListener("click", () => {
+  attractorGizmoEnabled = !attractorGizmoEnabled;
+  setToggleState(attractorGizmoToggle, attractorGizmoEnabled);
+  drawEmitterGizmo();
 });
 
 const groundToggle = document.getElementById("groundEnabled");
@@ -2263,6 +2591,18 @@ const directionZWheel = document.getElementById("directionZWheel");
 const directionZDot = document.getElementById("directionZDot");
 const directionZVal = document.getElementById("directionZVal");
 const directionZReset = document.getElementById("directionZReset");
+const vortexRotXWheel = document.getElementById("vortexRotXWheel");
+const vortexRotXDot = document.getElementById("vortexRotXDot");
+const vortexRotXVal = document.getElementById("vortexRotXVal");
+const vortexRotXReset = document.getElementById("vortexRotXReset");
+const vortexRotYWheel = document.getElementById("vortexRotYWheel");
+const vortexRotYDot = document.getElementById("vortexRotYDot");
+const vortexRotYVal = document.getElementById("vortexRotYVal");
+const vortexRotYReset = document.getElementById("vortexRotYReset");
+const vortexRotZWheel = document.getElementById("vortexRotZWheel");
+const vortexRotZDot = document.getElementById("vortexRotZDot");
+const vortexRotZVal = document.getElementById("vortexRotZVal");
+const vortexRotZReset = document.getElementById("vortexRotZReset");
 
 function normalizeAngle(angle) {
   return ((angle % 360) + 360) % 360;
@@ -2282,6 +2622,9 @@ function updateDirectionUI() {
   directionRotX = normalizeAngle(directionRotX);
   directionRotY = normalizeAngle(directionRotY);
   directionRotZ = normalizeAngle(directionRotZ);
+  vortexRotX = normalizeAngle(vortexRotX);
+  vortexRotY = normalizeAngle(vortexRotY);
+  vortexRotZ = normalizeAngle(vortexRotZ);
   if (directionXVal && !directionXVal.classList.contains("editing")) {
     directionXVal.textContent = `${Math.round(directionRotX)}°`;
   }
@@ -2291,9 +2634,21 @@ function updateDirectionUI() {
   if (directionZVal && !directionZVal.classList.contains("editing")) {
     directionZVal.textContent = `${Math.round(directionRotZ)}°`;
   }
+  if (vortexRotXVal && !vortexRotXVal.classList.contains("editing")) {
+    vortexRotXVal.textContent = `${Math.round(vortexRotX)}°`;
+  }
+  if (vortexRotYVal && !vortexRotYVal.classList.contains("editing")) {
+    vortexRotYVal.textContent = `${Math.round(vortexRotY)}°`;
+  }
+  if (vortexRotZVal && !vortexRotZVal.classList.contains("editing")) {
+    vortexRotZVal.textContent = `${Math.round(vortexRotZ)}°`;
+  }
   updateWheel(directionXWheel, directionXDot, directionRotX);
   updateWheel(directionYWheel, directionYDot, directionRotY);
   updateWheel(directionZWheel, directionZDot, directionRotZ);
+  updateWheel(vortexRotXWheel, vortexRotXDot, vortexRotX);
+  updateWheel(vortexRotYWheel, vortexRotYDot, vortexRotY);
+  updateWheel(vortexRotZWheel, vortexRotZDot, vortexRotZ);
 }
 
 function angleFromPointer(event, wheel) {
@@ -2355,6 +2710,15 @@ setupAngleValueEditor(directionYVal, () => directionRotY, (value) => {
 setupAngleValueEditor(directionZVal, () => directionRotZ, (value) => {
   directionRotZ = value;
 });
+setupAngleValueEditor(vortexRotXVal, () => vortexRotX, (value) => {
+  vortexRotX = value;
+});
+setupAngleValueEditor(vortexRotYVal, () => vortexRotY, (value) => {
+  vortexRotY = value;
+});
+setupAngleValueEditor(vortexRotZVal, () => vortexRotZ, (value) => {
+  vortexRotZ = value;
+});
 
 attachAngleWheel(directionXWheel, (angle) => {
   directionRotX = angle;
@@ -2366,6 +2730,18 @@ attachAngleWheel(directionYWheel, (angle) => {
 });
 attachAngleWheel(directionZWheel, (angle) => {
   directionRotZ = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(vortexRotXWheel, (angle) => {
+  vortexRotX = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(vortexRotYWheel, (angle) => {
+  vortexRotY = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(vortexRotZWheel, (angle) => {
+  vortexRotZ = angle;
   updateDirectionUI();
 });
 
@@ -2384,6 +2760,24 @@ if (directionYReset) {
 if (directionZReset) {
   directionZReset.addEventListener("click", () => {
     directionRotZ = 0;
+    updateDirectionUI();
+  });
+}
+if (vortexRotXReset) {
+  vortexRotXReset.addEventListener("click", () => {
+    vortexRotX = 0;
+    updateDirectionUI();
+  });
+}
+if (vortexRotYReset) {
+  vortexRotYReset.addEventListener("click", () => {
+    vortexRotY = 0;
+    updateDirectionUI();
+  });
+}
+if (vortexRotZReset) {
+  vortexRotZReset.addEventListener("click", () => {
+    vortexRotZ = 0;
     updateDirectionUI();
   });
 }
@@ -2450,6 +2844,12 @@ const gradientEditor = setupGradientEditor(colorGradientCanvas, {
 const emitterPosXInput = document.getElementById("emitterPosX");
 const emitterPosYInput = document.getElementById("emitterPosY");
 const emitterPosZInput = document.getElementById("emitterPosZ");
+const vortexPosXInput = document.getElementById("vortexPosX");
+const vortexPosYInput = document.getElementById("vortexPosY");
+const vortexPosZInput = document.getElementById("vortexPosZ");
+const attractorPosXInput = document.getElementById("attractorPosX");
+const attractorPosYInput = document.getElementById("attractorPosY");
+const attractorPosZInput = document.getElementById("attractorPosZ");
 
 colorModeSelect.value = particleColorMode;
 function updateColorModeUI() {
@@ -2805,34 +3205,81 @@ let gizmoDragging = false;
 let gizmoDragAxis = null;
 let gizmoDragDir = [0, 0];
 let gizmoLastPointer = [0, 0];
+let gizmoDragTarget = null;
+let gizmoDragStartPos = [0, 0, 0]; // World position when drag started
+let gizmoDragStartPointer = [0, 0]; // Screen position when drag started
+let gizmoHoverAxis = null;
+let gizmoHoverTarget = null;
 
-window.addEventListener("pointerdown", (event) => {
-  if (emitterGizmoEnabled && startGizmoDrag(event)) return;
+const pointerTarget = window;
+
+pointerTarget.addEventListener("pointerdown", (event) => {
+  const canDragGizmo = emitterGizmoEnabled || vortexGizmoEnabled || attractorGizmoEnabled;
+  if (canDragGizmo && startGizmoDrag(event)) {
+    event.preventDefault();
+    if (gizmoCanvas) {
+      gizmoCanvas.setPointerCapture(event.pointerId);
+    }
+    return;
+  }
   if (emitMode === "auto") return;
   lastHit = screenToWorldHit(event);
   spawnAt(lastHit[0], lastHit[1]);
   isSpawning = true;
 });
-window.addEventListener("pointermove", (event) => {
+pointerTarget.addEventListener("pointermove", (event) => {
   if (gizmoDragging) {
     updateGizmoDrag(event);
     return;
   }
+  // Update hover state for cursor feedback
+  updateGizmoHover(event);
   if (!isSpawning) return;
   lastHit = screenToWorldHit(event);
 });
-window.addEventListener("pointerup", () => {
+pointerTarget.addEventListener("pointerup", (event) => {
   isSpawning = false;
   if (gizmoDragging) {
     gizmoDragging = false;
     gizmoDragAxis = null;
+    gizmoDragTarget = null;
+    if (gizmoCanvas) {
+      gizmoCanvas.style.cursor = "";
+      document.body.style.cursor = "";
+      if (gizmoCanvas.hasPointerCapture(event.pointerId)) {
+        gizmoCanvas.releasePointerCapture(event.pointerId);
+      }
+    }
   }
 });
-window.addEventListener("pointerleave", () => {
+pointerTarget.addEventListener("pointerleave", (event) => {
   isSpawning = false;
+  gizmoHoverAxis = null;
+  gizmoHoverTarget = null;
+  if (gizmoCanvas) gizmoCanvas.style.cursor = "";
+  document.body.style.cursor = "";
   if (gizmoDragging) {
     gizmoDragging = false;
     gizmoDragAxis = null;
+    gizmoDragTarget = null;
+    if (gizmoCanvas && event.pointerId !== undefined && gizmoCanvas.hasPointerCapture(event.pointerId)) {
+      gizmoCanvas.releasePointerCapture(event.pointerId);
+    }
+  }
+});
+pointerTarget.addEventListener("pointercancel", (event) => {
+  isSpawning = false;
+  gizmoHoverAxis = null;
+  gizmoHoverTarget = null;
+  if (gizmoCanvas) gizmoCanvas.style.cursor = "";
+  document.body.style.cursor = "";
+  if (gizmoDragging) {
+    gizmoDragging = false;
+    gizmoDragAxis = null;
+    gizmoDragTarget = null;
+    if (gizmoCanvas && event.pointerId !== undefined && gizmoCanvas.hasPointerCapture(event.pointerId)) {
+      gizmoCanvas.releasePointerCapture(event.pointerId);
+    }
   }
 });
 
@@ -2877,21 +3324,31 @@ function frame() {
         p.vel[2] += c[2] * curlStrength * dt;
       }
       if (vortexEnabled) {
-        const dx = p.pos[0];
-        const dz = p.pos[2];
-        const dist = Math.hypot(dx, dz);
-        if (dist < vortexRadius) {
+        const axis = normalizeVec3(applyRotation([0, 1, 0], vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180));
+        const rel = [p.pos[0] - vortexPos[0], p.pos[1] - vortexPos[1], p.pos[2] - vortexPos[2]];
+        const proj = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
+        const radial = [
+          rel[0] - axis[0] * proj,
+          rel[1] - axis[1] * proj,
+          rel[2] - axis[2] * proj,
+        ];
+        const dist = Math.hypot(radial[0], radial[1], radial[2]);
+        if (dist < vortexRadius && dist > 1e-4) {
           const falloff = 1 - dist / vortexRadius;
-          const tangent = normalizeVec3([-dz, 0, dx]);
+          const tangent = normalizeVec3([
+            axis[1] * radial[2] - axis[2] * radial[1],
+            axis[2] * radial[0] - axis[0] * radial[2],
+            axis[0] * radial[1] - axis[1] * radial[0],
+          ]);
           p.vel[0] += tangent[0] * vortexStrength * falloff * dt;
           p.vel[1] += tangent[1] * vortexStrength * falloff * dt;
           p.vel[2] += tangent[2] * vortexStrength * falloff * dt;
         }
       }
       if (attractorEnabled && attractorStrength > 0 && attractorRadius > 0) {
-        const dx = -p.pos[0];
-        const dy = -p.pos[1];
-        const dz = -p.pos[2];
+        const dx = attractorPos[0] - p.pos[0];
+        const dy = attractorPos[1] - p.pos[1];
+        const dz = attractorPos[2] - p.pos[2];
         const dist = Math.hypot(dx, dy, dz) || 1;
         if (dist < attractorRadius) {
           const force = (1 - dist / attractorRadius) * attractorStrength;
