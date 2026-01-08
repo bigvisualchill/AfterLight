@@ -2308,18 +2308,21 @@ function setToggleState(button, enabled) {
 }
 
 // Helper to expand the parent setting when a toggle is turned on
-function expandParentSetting(element, relatedControlsId = null) {
+function expandParentSetting(element, relatedControlsId = null, options = {}) {
+  const { updatePanelContent = true, setSettingExpanded = true } = options;
   const setting = element.closest(".setting");
-  if (setting && !setting.classList.contains("expanded")) {
+  if (setting && setSettingExpanded && !setting.classList.contains("expanded")) {
     setting.classList.add("expanded");
     const indicator = setting.querySelector(".collapse-indicator span");
     if (indicator) {
-      indicator.textContent = "−";
+      indicator.textContent = "-";
     }
-    // Update panel-content state for mobile
-    const panelContent = setting.closest(".panel-content");
-    if (panelContent) {
-      panelContent.classList.add("has-expanded");
+    if (updatePanelContent) {
+      // Update panel-content state for mobile
+      const panelContent = setting.closest(".panel-content");
+      if (panelContent) {
+        panelContent.classList.add("has-expanded");
+      }
     }
   }
   
@@ -2333,19 +2336,22 @@ function expandParentSetting(element, relatedControlsId = null) {
 }
 
 // Helper to collapse the parent setting when a toggle is turned off
-function collapseParentSetting(element, relatedControlsId = null) {
+function collapseParentSetting(element, relatedControlsId = null, options = {}) {
+  const { updatePanelContent = true, setSettingExpanded = true } = options;
   const setting = element.closest(".setting");
-  if (setting && setting.classList.contains("expanded")) {
+  if (setting && setSettingExpanded && setting.classList.contains("expanded")) {
     setting.classList.remove("expanded");
     const indicator = setting.querySelector(".collapse-indicator span");
     if (indicator) {
       indicator.textContent = "+";
     }
-    // Update panel-content state for mobile
-    const panelContent = setting.closest(".panel-content");
-    if (panelContent) {
-      const hasExpanded = panelContent.querySelector(".setting.expanded") !== null;
-      panelContent.classList.toggle("has-expanded", hasExpanded);
+    if (updatePanelContent) {
+      // Update panel-content state for mobile
+      const panelContent = setting.closest(".panel-content");
+      if (panelContent) {
+        const hasExpanded = panelContent.querySelector(".setting.expanded") !== null;
+        panelContent.classList.toggle("has-expanded", hasExpanded);
+      }
     }
   }
   
@@ -2358,14 +2364,22 @@ function collapseParentSetting(element, relatedControlsId = null) {
   }
 }
 
+function setControlVisibility(control, isVisible) {
+  if (!control) return;
+  control.classList.toggle("hidden-controls", !isVisible);
+  control.style.display = isVisible ? "" : "none";
+}
+
 const forcesControls = document.getElementById("forcesControls");
-forcesControls.style.display = forcesEnabled ? "" : "none";
+// forcesControls starts with hidden-controls class in HTML
 
 const forceModeSelect = document.getElementById("forceMode");
 const turbulenceControls = document.getElementById("turbulenceControls");
 const curlControls = document.getElementById("curlControls");
 const vortexControls = document.getElementById("vortexControls");
 const attractorControls = document.getElementById("attractorControls");
+const attractorPositionPanel = document.getElementById("attractorPositionPanel");
+const vortexPositionPanel = document.getElementById("vortexPositionPanel");
 
 function updateForceModeUI() {
   if (forceModeSelect) forceModeSelect.value = forceMode;
@@ -2373,6 +2387,8 @@ if (turbulenceControls) turbulenceControls.style.display = forceMode === "turbul
 if (curlControls) curlControls.style.display = forceMode === "curl" ? "" : "none";
 if (vortexControls) vortexControls.style.display = vortexEnabled ? "" : "none";
 if (attractorControls) attractorControls.style.display = attractorEnabled ? "" : "none";
+if (attractorPositionPanel) attractorPositionPanel.style.display = attractorEnabled ? "" : "none";
+if (vortexPositionPanel) vortexPositionPanel.style.display = vortexEnabled ? "" : "none";
 }
 
 if (forceModeSelect) {
@@ -2389,7 +2405,11 @@ setToggleState(vortexToggle, vortexEnabled);
 vortexToggle.addEventListener("click", () => {
   vortexEnabled = !vortexEnabled;
   setToggleState(vortexToggle, vortexEnabled);
-  if (vortexEnabled) expandParentSetting(vortexToggle);
+  if (vortexEnabled) {
+    expandParentSetting(vortexToggle, "vortexControls", { updatePanelContent: false, setSettingExpanded: false });
+  } else {
+    collapseParentSetting(vortexToggle, "vortexControls", { updatePanelContent: false, setSettingExpanded: false });
+  }
   updateForceModeUI();
 });
 
@@ -2398,7 +2418,11 @@ setToggleState(attractorToggle, attractorEnabled);
 attractorToggle.addEventListener("click", () => {
   attractorEnabled = !attractorEnabled;
   setToggleState(attractorToggle, attractorEnabled);
-  if (attractorEnabled) expandParentSetting(attractorToggle);
+  if (attractorEnabled) {
+    expandParentSetting(attractorToggle, "attractorControls", { updatePanelContent: false, setSettingExpanded: false });
+  } else {
+    collapseParentSetting(attractorToggle, "attractorControls", { updatePanelContent: false, setSettingExpanded: false });
+  }
   updateForceModeUI();
 });
 
@@ -2425,20 +2449,22 @@ setToggleState(groundToggle, groundEnabled);
 groundToggle.addEventListener("click", () => {
   groundEnabled = !groundEnabled;
   setToggleState(groundToggle, groundEnabled);
-  if (groundEnabled) expandParentSetting(groundToggle);
+  if (groundEnabled) expandParentSetting(groundToggle, null, { updatePanelContent: false, setSettingExpanded: false });
   groundControls.style.display = groundEnabled ? "" : "none";
 });
 const forcesToggle = document.getElementById("forcesEnabled");
 setToggleState(forcesToggle, forcesEnabled);
+setControlVisibility(forcesControls, forcesEnabled);
 forcesToggle.addEventListener("click", () => {
   forcesEnabled = !forcesEnabled;
   setToggleState(forcesToggle, forcesEnabled);
   if (forcesEnabled) {
-    expandParentSetting(forcesToggle, "forcesControls");
+    expandParentSetting(forcesToggle, "forcesControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(forcesControls, true);
   } else {
-    collapseParentSetting(forcesToggle, "forcesControls");
+    collapseParentSetting(forcesToggle, "forcesControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(forcesControls, false);
   }
-  forcesControls.style.display = forcesEnabled ? "" : "none";
 });
 bindRange("lifeSeconds", "lifeSecondsVal", () => lifeSeconds, (v) => {
   lifeSeconds = Math.max(0.1, v);
@@ -2565,32 +2591,34 @@ dofModeSelect.addEventListener("change", () => {
 
 const dofToggle = document.getElementById("dofEnabled");
 const dofControls = document.getElementById("dofControls");
-dofControls.style.display = dofEnabled ? "" : "none";
+setControlVisibility(dofControls, dofEnabled);
 setToggleState(dofToggle, dofEnabled);
 dofToggle.addEventListener("click", () => {
   dofEnabled = !dofEnabled;
   setToggleState(dofToggle, dofEnabled);
   if (dofEnabled) {
-    expandParentSetting(dofToggle, "dofControls");
+    expandParentSetting(dofToggle, "dofControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(dofControls, true);
   } else {
-    collapseParentSetting(dofToggle, "dofControls");
+    collapseParentSetting(dofToggle, "dofControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(dofControls, false);
   }
-  dofControls.style.display = dofEnabled ? "" : "none";
 });
 
 const shadingToggle = document.getElementById("shadingEnabled");
 const shadingControls = document.getElementById("shadingControls");
-shadingControls.style.display = shadingEnabled ? "" : "none";
+setControlVisibility(shadingControls, shadingEnabled);
 setToggleState(shadingToggle, shadingEnabled);
 shadingToggle.addEventListener("click", () => {
   shadingEnabled = !shadingEnabled;
   setToggleState(shadingToggle, shadingEnabled);
   if (shadingEnabled) {
-    expandParentSetting(shadingToggle, "shadingControls");
+    expandParentSetting(shadingToggle, "shadingControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(shadingControls, true);
   } else {
-    collapseParentSetting(shadingToggle, "shadingControls");
+    collapseParentSetting(shadingToggle, "shadingControls", { updatePanelContent: false, setSettingExpanded: false });
+    setControlVisibility(shadingControls, false);
   }
-  shadingControls.style.display = shadingEnabled ? "" : "none";
 });
 
 const focusOverlayToggle = document.getElementById("focusOverlay");
@@ -2978,13 +3006,12 @@ function setupSettingCollapsibles() {
     if (control.classList.contains("direction-control")) return;
     // Skip controls inside control-body (they're nested inside another setting)
     if (control.closest(".control-body")) return;
-    
     const label = control.querySelector("label");
     if (!label || label.dataset.toggleBound) return;
     label.dataset.toggleBound = "true";
     
-    // Check if this is a main toggle control (Forces, Shading, Camera) - these use the On/Off button instead of +/-
-    const isMainToggleControl = control.querySelector("#forcesEnabled, #shadingEnabled, #dofEnabled") !== null;
+    // Check if this is a main toggle control (Forces, Shading, Camera, Vortex, Attractor) - these use the On/Off button instead of +/-
+    const isMainToggleControl = control.querySelector("#forcesEnabled, #shadingEnabled, #dofEnabled, #vortexEnabled, #attractorEnabled") !== null;
     
     control.classList.add("setting");
     control.classList.remove("expanded");
@@ -3270,6 +3297,17 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
       panel.classList.add("active");
       btn.classList.add("active");
       currentOpenPanel = { panelName, panel, btn };
+      
+      // For Forces, Shading, and Camera: ensure controls are hidden when panel opens
+      // if the toggle is off
+      if (panelName === "forces" && forcesControls && !forcesEnabled) {
+        forcesControls.style.display = "none";
+      } else if (panelName === "shading" && shadingControls && !shadingEnabled) {
+        shadingControls.style.display = "none";
+      } else if (panelName === "camera" && dofControls && !dofEnabled) {
+        dofControls.style.display = "none";
+      }
+      
       // Resize editors when panel opens
       sizeCurveEditor.resize();
       opacityCurveEditor.resize();

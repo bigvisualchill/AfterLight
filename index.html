@@ -160,7 +160,7 @@
       }
       .settings-panel-container .panel {
         display: none;
-        width: 260px;
+        width: 320px;
       }
       .settings-panel-container .panel.active {
         display: block;
@@ -278,6 +278,15 @@
         display: grid;
         gap: 6px;
       }
+      .inline-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .inline-toggle .pill-toggle {
+        margin-left: auto;
+      }
       .select-control {
         margin-bottom: 0;
       }
@@ -297,6 +306,10 @@
         background: transparent;
         border: none;
         padding: 0;
+      }
+      /* Hide controls when parent has hidden-controls class */
+      .hidden-controls {
+        display: none !important;
       }
       .control label {
         display: flex;
@@ -573,8 +586,6 @@
           z-index: 999;
           background: transparent;
           pointer-events: none;
-          max-height: calc(100vh - 84px);
-          overflow-y: auto;
         }
         .settings-panel-container .panel {
           pointer-events: auto;
@@ -593,6 +604,9 @@
         }
         .settings-panel-container .panel.active {
           display: block;
+          max-height: calc(100vh - 84px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
         }
         .panel-header {
           display: none;
@@ -606,6 +620,10 @@
           gap: 10px;
           padding: 0;
           pointer-events: auto;
+          max-height: calc(100vh - 104px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
         }
         
         /* Hide other settings when one is expanded */
@@ -1491,8 +1509,10 @@
             <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
             <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
             <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <label for="emitterGizmo">Show Emitter Gizmo</label>
-            <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+            <div class="inline-toggle">
+              <label for="emitterGizmo">Show Emitter Gizmo</label>
+              <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
           </div>
           <div class="control rotation-group">
             <label>Emitter Rotation</label>
@@ -1565,32 +1585,25 @@
         <div class="panel-content">
           <div class="control">
             <label for="forcesEnabled">Forces</label>
-            <button id="forcesEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+            <button id="forcesEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
           </div>
-          <div id="forcesControls" class="control-stack">
-            <div class="control select-control">
+          <div id="forcesControls" class="control-stack hidden-controls">
+            <div class="control">
+              <label>Noise</label>
               <label for="forceMode">Noise Mode</label>
               <select id="forceMode">
                 <option value="turbulence">Turbulence</option>
                 <option value="curl">Curl Noise</option>
               </select>
-            </div>
-            <div id="turbulenceControls" class="control-stack">
-              <div class="control">
+              <div id="turbulenceControls">
                 <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
                 <input id="turbulence" type="range" min="0" max="100" step="0.1" data-default="1.2" />
-              </div>
-              <div class="control">
                 <label for="turbulenceScale">Turbulence Scale <span id="turbulenceScaleVal"></span></label>
                 <input id="turbulenceScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
               </div>
-            </div>
-            <div id="curlControls" class="control-stack">
-              <div class="control">
+              <div id="curlControls">
                 <label for="curlStrength">Curl Strength <span id="curlStrengthVal"></span></label>
                 <input id="curlStrength" type="range" min="0" max="100" step="0.1" data-default="1.2" />
-              </div>
-              <div class="control">
                 <label for="curlScale">Curl Scale <span id="curlScaleVal"></span></label>
                 <input id="curlScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
               </div>
@@ -1600,60 +1613,57 @@
               <button id="vortexEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
             </div>
             <div id="vortexControls" class="control-stack">
-            <div class="control">
-              <label for="vortexStrength">Vortex Strength <span id="vortexStrengthVal"></span></label>
-              <input id="vortexStrength" type="range" min="0" max="100" step="0.1" data-default="1.8" />
-            </div>
-            <div class="control">
-              <label for="vortexRadius">Vortex Radius <span id="vortexRadiusVal"></span></label>
-              <input id="vortexRadius" type="range" min="0.1" max="100" step="0.1" data-default="1.5" />
-            </div>
-            <div class="control">
-              <label for="vortexGizmo">Show Vortex Gizmo</label>
-              <button id="vortexGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-            </div>
-            <div class="control">
-              <label for="vortexPosX">Vortex X <span id="vortexPosXVal"></span></label>
-              <input id="vortexPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="vortexPosY">Vortex Y <span id="vortexPosYVal"></span></label>
-              <input id="vortexPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="vortexPosZ">Vortex Z <span id="vortexPosZVal"></span></label>
-              <input id="vortexPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            </div>
-            <div class="control rotation-group">
-              <label>Vortex Rotation</label>
-              <div class="direction-3d">
-                <div class="rotation-axis">
-                  <span class="axis-label">X</span>
-                  <div id="vortexRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex X">
-                    <div id="vortexRotXDot" class="direction-wheel-dot"></div>
-                  </div>
-                  <span class="direction-values"><span id="vortexRotXVal"></span></span>
-                  <button id="vortexRotXReset" type="button" class="reset-btn direction-reset">ø</button>
+              <div class="control">
+                <label for="vortexStrength">Vortex Strength <span id="vortexStrengthVal"></span></label>
+                <input id="vortexStrength" type="range" min="0" max="100" step="0.1" data-default="1.8" />
+              </div>
+              <div class="control">
+                <label for="vortexRadius">Vortex Radius <span id="vortexRadiusVal"></span></label>
+                <input id="vortexRadius" type="range" min="0.1" max="100" step="0.1" data-default="1.5" />
+              </div>
+              <div class="control">
+                <label>Vortex Position</label>
+                <label for="vortexPosX">X <span id="vortexPosXVal"></span></label>
+                <input id="vortexPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <label for="vortexPosY">Y <span id="vortexPosYVal"></span></label>
+                <input id="vortexPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <label for="vortexPosZ">Z <span id="vortexPosZVal"></span></label>
+                <input id="vortexPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <div class="inline-toggle">
+                  <label for="vortexGizmo">Show Vortex Gizmo</label>
+                  <button id="vortexGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
                 </div>
-                <div class="rotation-axis">
-                  <span class="axis-label">Y</span>
-                  <div id="vortexRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Y">
-                    <div id="vortexRotYDot" class="direction-wheel-dot"></div>
+              </div>
+              <div class="control rotation-group">
+                <label>Vortex Rotation</label>
+                <div class="direction-3d">
+                  <div class="rotation-axis">
+                    <span class="axis-label">X</span>
+                    <div id="vortexRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex X">
+                      <div id="vortexRotXDot" class="direction-wheel-dot"></div>
+                    </div>
+                    <span class="direction-values"><span id="vortexRotXVal"></span></span>
+                    <button id="vortexRotXReset" type="button" class="reset-btn direction-reset">ø</button>
                   </div>
-                  <span class="direction-values"><span id="vortexRotYVal"></span></span>
-                  <button id="vortexRotYReset" type="button" class="reset-btn direction-reset">ø</button>
-                </div>
-                <div class="rotation-axis">
-                  <span class="axis-label">Z</span>
-                  <div id="vortexRotZWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Z">
-                    <div id="vortexRotZDot" class="direction-wheel-dot"></div>
+                  <div class="rotation-axis">
+                    <span class="axis-label">Y</span>
+                    <div id="vortexRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Y">
+                      <div id="vortexRotYDot" class="direction-wheel-dot"></div>
+                    </div>
+                    <span class="direction-values"><span id="vortexRotYVal"></span></span>
+                    <button id="vortexRotYReset" type="button" class="reset-btn direction-reset">ø</button>
                   </div>
-                  <span class="direction-values"><span id="vortexRotZVal"></span></span>
-                  <button id="vortexRotZReset" type="button" class="reset-btn direction-reset">ø</button>
+                  <div class="rotation-axis">
+                    <span class="axis-label">Z</span>
+                    <div id="vortexRotZWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Z">
+                      <div id="vortexRotZDot" class="direction-wheel-dot"></div>
+                    </div>
+                    <span class="direction-values"><span id="vortexRotZVal"></span></span>
+                    <button id="vortexRotZReset" type="button" class="reset-btn direction-reset">ø</button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
             <div class="control">
               <label for="attractorEnabled">Attractor</label>
               <button id="attractorEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
@@ -1667,21 +1677,18 @@
                 <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
                 <input id="attractorRadius" type="range" min="0" max="100" step="0.1" data-default="0" />
               </div>
-              <div class="control">
+            </div>
+            <div id="attractorPositionPanel" class="control">
+              <label>Attractor Position</label>
+              <label for="attractorPosX">X <span id="attractorPosXVal"></span></label>
+              <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <label for="attractorPosY">Y <span id="attractorPosYVal"></span></label>
+              <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <label for="attractorPosZ">Z <span id="attractorPosZVal"></span></label>
+              <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <div class="inline-toggle">
                 <label for="attractorGizmo">Show Attractor Gizmo</label>
                 <button id="attractorGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-              </div>
-              <div class="control">
-                <label for="attractorPosX">Attractor X <span id="attractorPosXVal"></span></label>
-                <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-              </div>
-              <div class="control">
-                <label for="attractorPosY">Attractor Y <span id="attractorPosYVal"></span></label>
-                <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-              </div>
-              <div class="control">
-                <label for="attractorPosZ">Attractor Z <span id="attractorPosZVal"></span></label>
-                <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
               </div>
             </div>
             <div class="control">
@@ -1689,15 +1696,12 @@
               <input id="gravity" type="range" min="-100" max="100" step="0.1" data-default="-0.2" />
             </div>
             <div class="control">
-              <label for="windX">Wind X <span id="windXVal"></span></label>
+              <label>Wind</label>
+              <label for="windX">X <span id="windXVal"></span></label>
               <input id="windX" type="range" min="-100" max="100" step="0.1" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="windY">Wind Y <span id="windYVal"></span></label>
+              <label for="windY">Y <span id="windYVal"></span></label>
               <input id="windY" type="range" min="-100" max="100" step="0.1" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="windZ">Wind Z <span id="windZVal"></span></label>
+              <label for="windZ">Z <span id="windZVal"></span></label>
               <input id="windZ" type="range" min="-100" max="100" step="0.1" data-default="0" />
             </div>
             <div class="control">
@@ -1729,9 +1733,9 @@
         <div class="panel-content">
           <div class="control">
             <label for="shadingEnabled">Shading</label>
-            <button id="shadingEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+            <button id="shadingEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
           </div>
-          <div id="shadingControls" class="control-stack">
+          <div id="shadingControls" class="control-stack hidden-controls">
             <div class="control">
               <label for="baseColor">Light Color <span id="baseColorVal"></span></label>
               <input id="baseColor" type="color" />
@@ -1771,9 +1775,9 @@
         <div class="panel-content">
           <div class="control">
             <label for="dofEnabled">DOF</label>
-            <button id="dofEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+            <button id="dofEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
           </div>
-          <div id="dofControls" class="control-stack">
+          <div id="dofControls" class="control-stack hidden-controls">
             <div class="control">
               <label for="focusDepth">Focus Depth <span id="focusDepthVal"></span></label>
               <input id="focusDepth" type="range" min="-6" max="6" step="0.1" data-default="0" />
@@ -1816,4 +1820,3 @@
     <script type="module" src="./main.js"></script>
   </body>
 </html>
-
