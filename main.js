@@ -30,6 +30,8 @@ let attractorEnabled = false;
 let emitterGizmoEnabled = false;
 let vortexGizmoEnabled = false;
 let attractorGizmoEnabled = false;
+let lightGizmoEnabled = false;
+let cameraGizmoEnabled = false;
 let vortexPos = [0, 0, 0];
 let attractorPos = [0, 0, 0];
 let vortexRotX = 0;
@@ -50,6 +52,9 @@ let coneAngle = 16;
 let directionRotX = 0;
 let directionRotY = 0;
 let directionRotZ = 0;
+let cameraRotX = 0;
+let cameraRotY = 0;
+let cameraRotZ = 0;
 let speedRandom = 0.2;
 let emitterPos = [0, 0, 0];
 let spinRate2d = 1.2;
@@ -63,13 +68,12 @@ let aperture = 7.0;
 let dofMode = 0;
 let focusRange = 0.8;
 let focusOverlay = 0;
-let dofEnabled = false;
+let dofEnabled = true;
+let cameraViewEnabled = false;
 let bloomStrength = 0.3;
 let bloomThreshold = 0.8;
 let exposure = 1.2;
 let lightIntensity = 1.2;
-let lightAzimuth = 0;
-let lightElevation = 70;
 let lightPos = [0, 1, 0.3];
 let lightColor = [0.55, 0.74, 1.0];
 let shadingEnabled = false;
@@ -1103,6 +1107,24 @@ let instanceData = new Float32Array(particleCapacity * 17);
 
 const eye = [0, 0.4, 6];
 const target = [0, 0, 0];
+const neutralEye = [0, 0.4, 6];
+const neutralTarget = [0, 0, 0];
+const activeViewEye = [0, 0.4, 6];
+
+function setCameraRotationFromTarget() {
+  const dir = normalizeVec3([
+    target[0] - eye[0],
+    target[1] - eye[1],
+    target[2] - eye[2],
+  ]);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, dir[1])));
+  const yaw = Math.atan2(dir[0], -dir[2]);
+  cameraRotX = (pitch * 180) / Math.PI;
+  cameraRotY = (yaw * 180) / Math.PI;
+  cameraRotZ = 0;
+}
+
+setCameraRotationFromTarget();
 const up = [0, 1, 0];
 const cameraRight = [1, 0, 0];
 const cameraUp = [0, 1, 0];
@@ -1111,7 +1133,18 @@ const cameraForward = [0, 0, -1];
 function updateCamera(timeSeconds) {
   const aspect = canvas.width / canvas.height;
   mat4Perspective(proj, CAMERA_FOV, aspect, 0.1, 50);
-  mat4LookAt(view, eye, target, up);
+  const viewEye = cameraViewEnabled ? eye : neutralEye;
+  const viewTarget = cameraViewEnabled
+    ? [
+        viewEye[0] + getCameraLensDir()[0],
+        viewEye[1] + getCameraLensDir()[1],
+        viewEye[2] + getCameraLensDir()[2],
+      ]
+    : neutralTarget;
+  activeViewEye[0] = viewEye[0];
+  activeViewEye[1] = viewEye[1];
+  activeViewEye[2] = viewEye[2];
+  mat4LookAt(view, viewEye, viewTarget, up);
   mat4Multiply(viewProj, proj, view);
   mat4Invert(invViewProj, viewProj);
   cameraRight[0] = view[0];
@@ -1124,19 +1157,7 @@ function updateCamera(timeSeconds) {
   cameraForward[1] = -view[6];
   cameraForward[2] = -view[10];
 
-  const lightPosLen = Math.hypot(lightPos[0], lightPos[1], lightPos[2]);
-  let lightWorld;
-  if (lightPosLen > 1e-4) {
-    lightWorld = normalizeVec3(lightPos);
-  } else {
-    const az = (lightAzimuth * Math.PI) / 180;
-    const el = (lightElevation * Math.PI) / 180;
-    lightWorld = normalizeVec3([
-      Math.cos(el) * Math.cos(az),
-      Math.sin(el),
-      Math.cos(el) * Math.sin(az),
-    ]);
-  }
+  const lightWorld = normalizeVec3(lightPos);
   const lx = lightWorld[0];
   const ly = lightWorld[1];
   const lz = lightWorld[2];
@@ -1170,9 +1191,10 @@ function updateCamera(timeSeconds) {
 }
 
 function worldUnitsPerPixelAt(position) {
-  const dx = position[0] - eye[0];
-  const dy = position[1] - eye[1];
-  const dz = position[2] - eye[2];
+  const viewEye = cameraViewEnabled ? eye : neutralEye;
+  const dx = position[0] - viewEye[0];
+  const dy = position[1] - viewEye[1];
+  const dz = position[2] - viewEye[2];
   const depth = Math.max(0.1, dx * cameraForward[0] + dy * cameraForward[1] + dz * cameraForward[2]);
   const viewHeight = 2 * depth * Math.tan(CAMERA_FOV * 0.5);
   // Use CSS height (gizmoSize.height) since drag delta is in CSS pixels
@@ -1335,7 +1357,7 @@ function drawWireframeRing(center, radius, rotX, rotY, rotZ, color, lineWidth) {
 
 const GIZMO_HANDLE_SIZE = 14; // Size of the square handle in pixels
 
-function drawAxisHandles(origin, rotX, rotY, rotZ, handleLen, lineWidth) {
+function drawAxisHandles(origin, rotX, rotY, rotZ, handleLen, lineWidth, labelText = "") {
   const axes = [
     { axis: [1, 0, 0], color: "rgba(255, 90, 90, 0.95)", hoverColor: "rgba(255, 150, 150, 1)" },
     { axis: [0, 1, 0], color: "rgba(90, 255, 140, 0.95)", hoverColor: "rgba(150, 255, 180, 1)" },
@@ -1359,6 +1381,16 @@ function drawAxisHandles(origin, rotX, rotY, rotZ, handleLen, lineWidth) {
     gizmoCtx.moveTo(so[0], so[1]);
     gizmoCtx.lineTo(se[0], se[1]);
     gizmoCtx.stroke();
+
+    if (idx === 0 && labelText) {
+      const mx = (so[0] + se[0]) * 0.5;
+      const my = (so[1] + se[1]) * 0.5;
+      gizmoCtx.font = "12px \"SF Mono\", Menlo, monospace";
+      gizmoCtx.fillStyle = "rgba(255, 120, 120, 0.95)";
+      gizmoCtx.textAlign = "center";
+      gizmoCtx.textBaseline = "bottom";
+      gizmoCtx.fillText(labelText, mx, my - 6);
+    }
     
     // Draw a larger square handle at the end
     const halfSize = GIZMO_HANDLE_SIZE / 2;
@@ -1382,6 +1414,64 @@ function drawAxisHandles(origin, rotX, rotY, rotZ, handleLen, lineWidth) {
   });
 }
 
+function getCameraLensDir() {
+  const ax = (cameraRotX * Math.PI) / 180;
+  const ay = (cameraRotY * Math.PI) / 180;
+  const az = (cameraRotZ * Math.PI) / 180;
+  let dir = [0, 0, -1];
+  dir = rotateX(dir, ax);
+  dir = rotateY(dir, ay);
+  dir = rotateZ(dir, az);
+  return normalizeVec3(dir);
+}
+
+function getCameraGizmoOrigin() {
+  const lensDir = getCameraLensDir();
+  return [
+    eye[0] + lensDir[0] * 0.6,
+    eye[1] + lensDir[1] * 0.6,
+    eye[2] + lensDir[2] * 0.6,
+  ];
+}
+
+function drawDirectionArrow(origin, direction, length, color, lineWidth) {
+  const dir = normalizeVec3(direction);
+  const end = [
+    origin[0] + dir[0] * length,
+    origin[1] + dir[1] * length,
+    origin[2] + dir[2] * length,
+  ];
+  const so = worldToScreen(origin);
+  const se = worldToScreen(end);
+  if (!so || !se) return;
+  const dx = se[0] - so[0];
+  const dy = se[1] - so[1];
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const headLen = 8;
+  const headAngle = Math.PI / 6;
+  const hx1 = se[0] - (ux * headLen * Math.cos(headAngle) - uy * headLen * Math.sin(headAngle));
+  const hy1 = se[1] - (uy * headLen * Math.cos(headAngle) + ux * headLen * Math.sin(headAngle));
+  const hx2 = se[0] - (ux * headLen * Math.cos(headAngle) + uy * headLen * Math.sin(headAngle));
+  const hy2 = se[1] - (uy * headLen * Math.cos(headAngle) - ux * headLen * Math.sin(headAngle));
+
+  gizmoCtx.strokeStyle = color;
+  gizmoCtx.lineWidth = lineWidth;
+  gizmoCtx.beginPath();
+  gizmoCtx.moveTo(so[0], so[1]);
+  gizmoCtx.lineTo(se[0], se[1]);
+  gizmoCtx.stroke();
+
+  gizmoCtx.fillStyle = color;
+  gizmoCtx.beginPath();
+  gizmoCtx.moveTo(se[0], se[1]);
+  gizmoCtx.lineTo(hx1, hy1);
+  gizmoCtx.lineTo(hx2, hy2);
+  gizmoCtx.closePath();
+  gizmoCtx.fill();
+}
+
 function drawEmitterGizmo() {
   if (!gizmoCtx) return;
   gizmoCtx.clearRect(0, 0, gizmoSize.width, gizmoSize.height);
@@ -1389,15 +1479,23 @@ function drawEmitterGizmo() {
   const lineWidth = 1.2;
   if (emitterGizmoEnabled) {
     drawEmitterWireframe(wireColor, lineWidth);
-    drawAxisHandles(emitterPos, directionRotX * Math.PI / 180, directionRotY * Math.PI / 180, directionRotZ * Math.PI / 180, Math.max(0.3, emitterSize * 1.2), lineWidth);
+    drawAxisHandles(emitterPos, directionRotX * Math.PI / 180, directionRotY * Math.PI / 180, directionRotZ * Math.PI / 180, Math.max(0.3, emitterSize * 1.2), lineWidth, "Emitter");
   }
   if (vortexGizmoEnabled) {
     drawWireframeRing(vortexPos, Math.max(0.05, vortexRadius), vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180, wireColor, lineWidth);
-    drawAxisHandles(vortexPos, vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180, Math.max(0.3, vortexRadius * 1.2), lineWidth);
+    drawAxisHandles(vortexPos, vortexRotX * Math.PI / 180, vortexRotY * Math.PI / 180, vortexRotZ * Math.PI / 180, Math.max(0.3, vortexRadius * 1.2), lineWidth, "Vortex");
   }
   if (attractorGizmoEnabled) {
     drawWireframeSphere(attractorPos, Math.max(0.05, attractorRadius), wireColor, lineWidth);
-    drawAxisHandles(attractorPos, 0, 0, 0, Math.max(0.3, attractorRadius * 1.2), lineWidth);
+    drawAxisHandles(attractorPos, 0, 0, 0, Math.max(0.3, attractorRadius * 1.2), lineWidth, "Attractor");
+  }
+  if (lightGizmoEnabled) {
+    drawAxisHandles(lightPos, 0, 0, 0, 0.6, lineWidth, "Light");
+  }
+  if (cameraGizmoEnabled && !cameraViewEnabled) {
+    const cameraOrigin = getCameraGizmoOrigin();
+    drawAxisHandles(cameraOrigin, 0, 0, 0, 0.6, lineWidth, "Camera");
+    drawDirectionArrow(cameraOrigin, getCameraLensDir(), 0.9, "rgba(255, 190, 90, 0.95)", 1.4);
   }
 }
 
@@ -1448,6 +1546,36 @@ function updateAttractorPosInputs() {
   if (attractorPosZInput) {
     attractorPosZInput.value = String(attractorPos[2]);
     attractorPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function updateLightPosInputs() {
+  if (lightPosXInput) {
+    lightPosXInput.value = String(lightPos[0]);
+    lightPosXInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (lightPosYInput) {
+    lightPosYInput.value = String(lightPos[1]);
+    lightPosYInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (lightPosZInput) {
+    lightPosZInput.value = String(lightPos[2]);
+    lightPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function updateCameraPosInputs() {
+  if (cameraPosXInput) {
+    cameraPosXInput.value = String(eye[0]);
+    cameraPosXInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (cameraPosYInput) {
+    cameraPosYInput.value = String(eye[1]);
+    cameraPosYInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (cameraPosZInput) {
+    cameraPosZInput.value = String(eye[2]);
+    cameraPosZInput.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }
 
@@ -1506,6 +1634,36 @@ function getGizmoHandleCandidates() {
       candidates.push({ target: "attractor", axis, so, se });
     });
   }
+  if (lightGizmoEnabled) {
+    const origin = [lightPos[0], lightPos[1], lightPos[2]];
+    const handleLen = 0.6;
+    axes.forEach(({ axis }) => {
+      const end = [
+        origin[0] + axis[0] * handleLen,
+        origin[1] + axis[1] * handleLen,
+        origin[2] + axis[2] * handleLen,
+      ];
+      const se = worldToScreen(end);
+      const so = worldToScreen(origin);
+      if (!se || !so) return;
+      candidates.push({ target: "light", axis, so, se });
+    });
+  }
+  if (cameraGizmoEnabled && !cameraViewEnabled) {
+    const origin = getCameraGizmoOrigin();
+    const handleLen = 0.6;
+    axes.forEach(({ axis }) => {
+      const end = [
+        origin[0] + axis[0] * handleLen,
+        origin[1] + axis[1] * handleLen,
+        origin[2] + axis[2] * handleLen,
+      ];
+      const se = worldToScreen(end);
+      const so = worldToScreen(origin);
+      if (!se || !so) return;
+      candidates.push({ target: "camera", axis, so, se });
+    });
+  }
   return candidates;
 }
 
@@ -1529,7 +1687,12 @@ function findHandleAtPoint(pointer) {
 
 // Update hover state based on pointer position
 function updateGizmoHover(event) {
-  const canHoverGizmo = emitterGizmoEnabled || vortexGizmoEnabled || attractorGizmoEnabled;
+  const canHoverGizmo =
+    emitterGizmoEnabled ||
+    vortexGizmoEnabled ||
+    attractorGizmoEnabled ||
+    lightGizmoEnabled ||
+    (cameraGizmoEnabled && !cameraViewEnabled);
   if (!canHoverGizmo || !gizmoCanvas) {
     if (gizmoHoverAxis !== null) {
       gizmoHoverAxis = null;
@@ -1574,7 +1737,10 @@ function startGizmoDrag(event) {
     let targetPos = emitterPos;
     if (gizmoDragTarget === "vortex") targetPos = vortexPos;
     if (gizmoDragTarget === "attractor") targetPos = attractorPos;
+    if (gizmoDragTarget === "light") targetPos = lightPos;
+    if (gizmoDragTarget === "camera") targetPos = eye;
     gizmoDragStartPos = [targetPos[0], targetPos[1], targetPos[2]];
+    gizmoDragStartDisplayPos = gizmoDragTarget === "camera" ? getCameraGizmoOrigin() : null;
     gizmoDragging = true;
     if (gizmoCanvas) gizmoCanvas.style.cursor = "grabbing";
     document.body.style.cursor = "grabbing";
@@ -1624,6 +1790,8 @@ function updateGizmoDrag(event) {
   let targetPos = emitterPos;
   if (gizmoDragTarget === "vortex") targetPos = vortexPos;
   if (gizmoDragTarget === "attractor") targetPos = attractorPos;
+  if (gizmoDragTarget === "light") targetPos = lightPos;
+  if (gizmoDragTarget === "camera") targetPos = eye;
   
   // Calculate total movement from drag start (not from last frame)
   const totalDx = pointer[0] - gizmoDragStartPointer[0];
@@ -1631,12 +1799,15 @@ function updateGizmoDrag(event) {
   
   // Get the screen direction of the axis at the START position
   // This ensures consistent mapping throughout the drag
+  const dragOrigin = gizmoDragTarget === "camera" && gizmoDragStartDisplayPos
+    ? gizmoDragStartDisplayPos
+    : gizmoDragStartPos;
   const axisEnd = [
-    gizmoDragStartPos[0] + gizmoDragAxis[0],
-    gizmoDragStartPos[1] + gizmoDragAxis[1],
-    gizmoDragStartPos[2] + gizmoDragAxis[2],
+    dragOrigin[0] + gizmoDragAxis[0],
+    dragOrigin[1] + gizmoDragAxis[1],
+    dragOrigin[2] + gizmoDragAxis[2],
   ];
-  const so = worldToScreen(gizmoDragStartPos);
+  const so = worldToScreen(dragOrigin);
   const se = worldToScreen(axisEnd);
   
   if (!so || !se) return;
@@ -1662,6 +1833,10 @@ function updateGizmoDrag(event) {
     updateVortexPosInputs();
   } else if (gizmoDragTarget === "attractor") {
     updateAttractorPosInputs();
+  } else if (gizmoDragTarget === "light") {
+    updateLightPosInputs();
+  } else if (gizmoDragTarget === "camera") {
+    updateCameraPosInputs();
   }
 }
 
@@ -2442,6 +2617,42 @@ attractorGizmoToggle.addEventListener("click", () => {
   drawEmitterGizmo();
 });
 
+const lightGizmoToggle = document.getElementById("lightGizmo");
+if (lightGizmoToggle) {
+  setToggleState(lightGizmoToggle, lightGizmoEnabled);
+  lightGizmoToggle.addEventListener("click", () => {
+    lightGizmoEnabled = !lightGizmoEnabled;
+    setToggleState(lightGizmoToggle, lightGizmoEnabled);
+    drawEmitterGizmo();
+  });
+}
+
+const cameraGizmoToggle = document.getElementById("cameraGizmo");
+if (cameraGizmoToggle) {
+  setToggleState(cameraGizmoToggle, cameraGizmoEnabled);
+  cameraGizmoToggle.addEventListener("click", () => {
+    cameraGizmoEnabled = !cameraGizmoEnabled;
+    setToggleState(cameraGizmoToggle, cameraGizmoEnabled);
+    drawEmitterGizmo();
+  });
+}
+
+const cameraViewToggle = document.getElementById("cameraViewEnabled");
+if (cameraViewToggle) {
+  setToggleState(cameraViewToggle, cameraViewEnabled);
+  cameraViewToggle.addEventListener("click", () => {
+    cameraViewEnabled = !cameraViewEnabled;
+    setToggleState(cameraViewToggle, cameraViewEnabled);
+    if (cameraViewEnabled) {
+      cameraGizmoEnabled = false;
+      if (cameraGizmoToggle) {
+        setToggleState(cameraGizmoToggle, cameraGizmoEnabled);
+      }
+      drawEmitterGizmo();
+    }
+  });
+}
+
 const groundToggle = document.getElementById("groundEnabled");
 const groundControls = document.getElementById("groundControls");
 groundControls.style.display = groundEnabled ? "" : "none";
@@ -2458,12 +2669,19 @@ setControlVisibility(forcesControls, forcesEnabled);
 forcesToggle.addEventListener("click", () => {
   forcesEnabled = !forcesEnabled;
   setToggleState(forcesToggle, forcesEnabled);
+  if (!forcesEnabled) {
+    vortexGizmoEnabled = false;
+    attractorGizmoEnabled = false;
+    setToggleState(vortexGizmoToggle, vortexGizmoEnabled);
+    setToggleState(attractorGizmoToggle, attractorGizmoEnabled);
+  }
   if (forcesEnabled) {
     expandParentSetting(forcesToggle, "forcesControls", { updatePanelContent: false, setSettingExpanded: false });
     setControlVisibility(forcesControls, true);
   } else {
     collapseParentSetting(forcesToggle, "forcesControls", { updatePanelContent: false, setSettingExpanded: false });
     setControlVisibility(forcesControls, false);
+    drawEmitterGizmo();
   }
 });
 bindRange("lifeSeconds", "lifeSecondsVal", () => lifeSeconds, (v) => {
@@ -2526,6 +2744,18 @@ bindRange("emitterPosZ", "emitterPosZVal", () => emitterPos[2], (v) => {
   emitterPos[2] = v;
   return emitterPos[2];
 });
+bindRange("cameraPosX", "cameraPosXVal", () => eye[0], (v) => {
+  eye[0] = v;
+  return eye[0];
+});
+bindRange("cameraPosY", "cameraPosYVal", () => eye[1], (v) => {
+  eye[1] = v;
+  return eye[1];
+});
+bindRange("cameraPosZ", "cameraPosZVal", () => eye[2], (v) => {
+  eye[2] = v;
+  return eye[2];
+});
 bindRange("focusDepth", "focusDepthVal", () => focusOffset, (v) => {
   focusOffset = v;
   return focusOffset;
@@ -2574,14 +2804,6 @@ bindRange("lightPosZ", "lightPosZVal", () => lightPos[2], (v) => {
   lightPos[2] = v;
   return lightPos[2];
 });
-bindRange("lightAzimuth", "lightAzimuthVal", () => lightAzimuth, (v) => {
-  lightAzimuth = v;
-  return lightAzimuth;
-});
-bindRange("lightElevation", "lightElevationVal", () => lightElevation, (v) => {
-  lightElevation = v;
-  return lightElevation;
-});
 
 const dofModeSelect = document.getElementById("dofMode");
 dofModeSelect.value = "bokeh";
@@ -2589,21 +2811,8 @@ dofModeSelect.addEventListener("change", () => {
   dofMode = dofModeSelect.value === "physical" ? 1 : 0;
 });
 
-const dofToggle = document.getElementById("dofEnabled");
 const dofControls = document.getElementById("dofControls");
-setControlVisibility(dofControls, dofEnabled);
-setToggleState(dofToggle, dofEnabled);
-dofToggle.addEventListener("click", () => {
-  dofEnabled = !dofEnabled;
-  setToggleState(dofToggle, dofEnabled);
-  if (dofEnabled) {
-    expandParentSetting(dofToggle, "dofControls", { updatePanelContent: false, setSettingExpanded: false });
-    setControlVisibility(dofControls, true);
-  } else {
-    collapseParentSetting(dofToggle, "dofControls", { updatePanelContent: false, setSettingExpanded: false });
-    setControlVisibility(dofControls, false);
-  }
-});
+setControlVisibility(dofControls, true);
 
 const shadingToggle = document.getElementById("shadingEnabled");
 const shadingControls = document.getElementById("shadingControls");
@@ -2612,6 +2821,13 @@ setToggleState(shadingToggle, shadingEnabled);
 shadingToggle.addEventListener("click", () => {
   shadingEnabled = !shadingEnabled;
   setToggleState(shadingToggle, shadingEnabled);
+  if (!shadingEnabled) {
+    lightGizmoEnabled = false;
+    if (lightGizmoToggle) {
+      setToggleState(lightGizmoToggle, lightGizmoEnabled);
+    }
+    drawEmitterGizmo();
+  }
   if (shadingEnabled) {
     expandParentSetting(shadingToggle, "shadingControls", { updatePanelContent: false, setSettingExpanded: false });
     setControlVisibility(shadingControls, true);
@@ -2622,11 +2838,13 @@ shadingToggle.addEventListener("click", () => {
 });
 
 const focusOverlayToggle = document.getElementById("focusOverlay");
-setToggleState(focusOverlayToggle, focusOverlay > 0.5);
-focusOverlayToggle.addEventListener("click", () => {
-  focusOverlay = focusOverlay > 0.5 ? 0 : 1;
+if (focusOverlayToggle) {
   setToggleState(focusOverlayToggle, focusOverlay > 0.5);
-});
+  focusOverlayToggle.addEventListener("click", () => {
+    focusOverlay = focusOverlay > 0.5 ? 0 : 1;
+    setToggleState(focusOverlayToggle, focusOverlay > 0.5);
+  });
+}
 
 const emitterShapeSelect = document.getElementById("emitterShape");
 const emitterShapeControls = document.getElementById("emitterShapeControls");
@@ -2705,6 +2923,18 @@ const vortexRotZWheel = document.getElementById("vortexRotZWheel");
 const vortexRotZDot = document.getElementById("vortexRotZDot");
 const vortexRotZVal = document.getElementById("vortexRotZVal");
 const vortexRotZReset = document.getElementById("vortexRotZReset");
+const cameraRotXWheel = document.getElementById("cameraRotXWheel");
+const cameraRotXDot = document.getElementById("cameraRotXDot");
+const cameraRotXVal = document.getElementById("cameraRotXVal");
+const cameraRotXReset = document.getElementById("cameraRotXReset");
+const cameraRotYWheel = document.getElementById("cameraRotYWheel");
+const cameraRotYDot = document.getElementById("cameraRotYDot");
+const cameraRotYVal = document.getElementById("cameraRotYVal");
+const cameraRotYReset = document.getElementById("cameraRotYReset");
+const cameraRotZWheel = document.getElementById("cameraRotZWheel");
+const cameraRotZDot = document.getElementById("cameraRotZDot");
+const cameraRotZVal = document.getElementById("cameraRotZVal");
+const cameraRotZReset = document.getElementById("cameraRotZReset");
 
 function normalizeAngle(angle) {
   return ((angle % 360) + 360) % 360;
@@ -2727,6 +2957,9 @@ function updateDirectionUI() {
   directionRotX = normalizeAngle(directionRotX);
   directionRotY = normalizeAngle(directionRotY);
   directionRotZ = normalizeAngle(directionRotZ);
+  cameraRotX = normalizeAngle(cameraRotX);
+  cameraRotY = normalizeAngle(cameraRotY);
+  cameraRotZ = normalizeAngle(cameraRotZ);
   vortexRotX = normalizeAngle(vortexRotX);
   vortexRotY = normalizeAngle(vortexRotY);
   vortexRotZ = normalizeAngle(vortexRotZ);
@@ -2748,9 +2981,21 @@ function updateDirectionUI() {
   if (vortexRotZVal && !vortexRotZVal.classList.contains("editing")) {
     vortexRotZVal.textContent = `${Math.round(vortexRotZ)}°`;
   }
+  if (cameraRotXVal && !cameraRotXVal.classList.contains("editing")) {
+    cameraRotXVal.textContent = `${Math.round(cameraRotX)}°`;
+  }
+  if (cameraRotYVal && !cameraRotYVal.classList.contains("editing")) {
+    cameraRotYVal.textContent = `${Math.round(cameraRotY)}°`;
+  }
+  if (cameraRotZVal && !cameraRotZVal.classList.contains("editing")) {
+    cameraRotZVal.textContent = `${Math.round(cameraRotZ)}°`;
+  }
   updateWheel(directionXWheel, directionXDot, directionRotX);
   updateWheel(directionYWheel, directionYDot, directionRotY);
   updateWheel(directionZWheel, directionZDot, directionRotZ);
+  updateWheel(cameraRotXWheel, cameraRotXDot, cameraRotX);
+  updateWheel(cameraRotYWheel, cameraRotYDot, cameraRotY);
+  updateWheel(cameraRotZWheel, cameraRotZDot, cameraRotZ);
   updateWheel(vortexRotXWheel, vortexRotXDot, vortexRotX);
   updateWheel(vortexRotYWheel, vortexRotYDot, vortexRotY);
   updateWheel(vortexRotZWheel, vortexRotZDot, vortexRotZ);
@@ -2824,6 +3069,15 @@ setupAngleValueEditor(vortexRotYVal, () => vortexRotY, (value) => {
 setupAngleValueEditor(vortexRotZVal, () => vortexRotZ, (value) => {
   vortexRotZ = value;
 });
+setupAngleValueEditor(cameraRotXVal, () => cameraRotX, (value) => {
+  cameraRotX = value;
+});
+setupAngleValueEditor(cameraRotYVal, () => cameraRotY, (value) => {
+  cameraRotY = value;
+});
+setupAngleValueEditor(cameraRotZVal, () => cameraRotZ, (value) => {
+  cameraRotZ = value;
+});
 
 attachAngleWheel(directionXWheel, (angle) => {
   directionRotX = angle;
@@ -2847,6 +3101,18 @@ attachAngleWheel(vortexRotYWheel, (angle) => {
 });
 attachAngleWheel(vortexRotZWheel, (angle) => {
   vortexRotZ = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(cameraRotXWheel, (angle) => {
+  cameraRotX = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(cameraRotYWheel, (angle) => {
+  cameraRotY = angle;
+  updateDirectionUI();
+});
+attachAngleWheel(cameraRotZWheel, (angle) => {
+  cameraRotZ = angle;
   updateDirectionUI();
 });
 
@@ -2883,6 +3149,24 @@ if (vortexRotYReset) {
 if (vortexRotZReset) {
   vortexRotZReset.addEventListener("click", () => {
     vortexRotZ = 0;
+    updateDirectionUI();
+  });
+}
+if (cameraRotXReset) {
+  cameraRotXReset.addEventListener("click", () => {
+    cameraRotX = 0;
+    updateDirectionUI();
+  });
+}
+if (cameraRotYReset) {
+  cameraRotYReset.addEventListener("click", () => {
+    cameraRotY = 0;
+    updateDirectionUI();
+  });
+}
+if (cameraRotZReset) {
+  cameraRotZReset.addEventListener("click", () => {
+    cameraRotZ = 0;
     updateDirectionUI();
   });
 }
@@ -2962,6 +3246,12 @@ const vortexPosZInput = document.getElementById("vortexPosZ");
 const attractorPosXInput = document.getElementById("attractorPosX");
 const attractorPosYInput = document.getElementById("attractorPosY");
 const attractorPosZInput = document.getElementById("attractorPosZ");
+const lightPosXInput = document.getElementById("lightPosX");
+const lightPosYInput = document.getElementById("lightPosY");
+const lightPosZInput = document.getElementById("lightPosZ");
+const cameraPosXInput = document.getElementById("cameraPosX");
+const cameraPosYInput = document.getElementById("cameraPosY");
+const cameraPosZInput = document.getElementById("cameraPosZ");
 
 colorModeSelect.value = particleColorMode;
 function updateColorModeUI() {
@@ -3011,7 +3301,7 @@ function setupSettingCollapsibles() {
     label.dataset.toggleBound = "true";
     
     // Check if this is a main toggle control (Forces, Shading, Camera, Vortex, Attractor) - these use the On/Off button instead of +/-
-    const isMainToggleControl = control.querySelector("#forcesEnabled, #shadingEnabled, #dofEnabled, #vortexEnabled, #attractorEnabled") !== null;
+    const isMainToggleControl = control.querySelector("#forcesEnabled, #shadingEnabled, #cameraViewEnabled, #vortexEnabled, #attractorEnabled") !== null;
     
     control.classList.add("setting");
     control.classList.remove("expanded");
@@ -3282,6 +3572,7 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
     event.stopPropagation();
     
     const panelName = btn.dataset.panel;
+    if (!panelName) return;
     const panel = document.querySelector(`.panel[data-panel="${panelName}"]`);
     
     // Close current panel if open
@@ -3304,8 +3595,6 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
         forcesControls.style.display = "none";
       } else if (panelName === "shading" && shadingControls && !shadingEnabled) {
         shadingControls.style.display = "none";
-      } else if (panelName === "camera" && dofControls && !dofEnabled) {
-        dofControls.style.display = "none";
       }
       
       // Resize editors when panel opens
@@ -3317,6 +3606,24 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
   
   btn.addEventListener("click", handleSidebarClick);
 });
+
+const fullscreenToggle = document.getElementById("fullscreenToggle");
+if (fullscreenToggle) {
+  const updateFullscreenButton = () => {
+    const isFullscreen = Boolean(document.fullscreenElement);
+    fullscreenToggle.classList.toggle("active", isFullscreen);
+    fullscreenToggle.title = isFullscreen ? "Exit Fullscreen" : "Fullscreen";
+  };
+  updateFullscreenButton();
+  fullscreenToggle.addEventListener("click", () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener("fullscreenchange", updateFullscreenButton);
+}
 
 window.addEventListener("resize", () => {
   sizeCurveEditor.resize();
@@ -3466,6 +3773,7 @@ let gizmoDragDir = [0, 0];
 let gizmoLastPointer = [0, 0];
 let gizmoDragTarget = null;
 let gizmoDragStartPos = [0, 0, 0]; // World position when drag started
+let gizmoDragStartDisplayPos = null; // Projectable origin when dragging camera
 let gizmoDragStartPointer = [0, 0]; // Screen position when drag started
 let gizmoHoverAxis = null;
 let gizmoHoverTarget = null;
@@ -3473,7 +3781,12 @@ let gizmoHoverTarget = null;
 const pointerTarget = window;
 
 pointerTarget.addEventListener("pointerdown", (event) => {
-  const canDragGizmo = emitterGizmoEnabled || vortexGizmoEnabled || attractorGizmoEnabled;
+  const canDragGizmo =
+    emitterGizmoEnabled ||
+    vortexGizmoEnabled ||
+    attractorGizmoEnabled ||
+    lightGizmoEnabled ||
+    (cameraGizmoEnabled && !cameraViewEnabled);
   if (canDragGizmo && startGizmoDrag(event)) {
     event.preventDefault();
     if (gizmoCanvas) {
@@ -3502,6 +3815,7 @@ pointerTarget.addEventListener("pointerup", (event) => {
     gizmoDragging = false;
     gizmoDragAxis = null;
     gizmoDragTarget = null;
+    gizmoDragStartDisplayPos = null;
     if (gizmoCanvas) {
       gizmoCanvas.style.cursor = "";
       document.body.style.cursor = "";
@@ -3521,6 +3835,7 @@ pointerTarget.addEventListener("pointerleave", (event) => {
     gizmoDragging = false;
     gizmoDragAxis = null;
     gizmoDragTarget = null;
+    gizmoDragStartDisplayPos = null;
     if (gizmoCanvas && event.pointerId !== undefined && gizmoCanvas.hasPointerCapture(event.pointerId)) {
       gizmoCanvas.releasePointerCapture(event.pointerId);
     }
@@ -3536,6 +3851,7 @@ pointerTarget.addEventListener("pointercancel", (event) => {
     gizmoDragging = false;
     gizmoDragAxis = null;
     gizmoDragTarget = null;
+    gizmoDragStartDisplayPos = null;
     if (gizmoCanvas && event.pointerId !== undefined && gizmoCanvas.hasPointerCapture(event.pointerId)) {
       gizmoCanvas.releasePointerCapture(event.pointerId);
     }
@@ -3714,9 +4030,10 @@ function frame() {
 
   updateCamera(now * 0.001);
   drawEmitterGizmo();
-  const baseFocus = Math.hypot(eye[0], eye[1], eye[2]);
+  const baseFocus = Math.hypot(activeViewEye[0], activeViewEye[1], activeViewEye[2]);
   const focusDistance = Math.max(0.1, baseFocus - focusOffset);
-  if (dofEnabled) {
+  const cameraViewActive = cameraViewEnabled && dofEnabled;
+  if (cameraViewActive) {
     dofData[0] = canvas.width;
     dofData[1] = canvas.height;
     dofData[2] = focusDistance;
@@ -3737,7 +4054,7 @@ function frame() {
   }
 
   const encoder = device.createCommandEncoder();
-  const particleTargetView = dofEnabled
+  const particleTargetView = cameraViewActive
     ? colorTexture.createView()
     : context.getCurrentTexture().createView();
   const particlePass = encoder.beginRenderPass({
@@ -3766,7 +4083,7 @@ function frame() {
   }
   particlePass.end();
 
-  if (dofEnabled) {
+  if (cameraViewActive) {
     const dofPass = encoder.beginRenderPass({
       colorAttachments: [
         {

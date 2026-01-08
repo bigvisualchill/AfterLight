@@ -64,6 +64,20 @@
         height: 100%;
         pointer-events: none;
       }
+      .sidebar-btn.fullscreen {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.28);
+        color: #cfd8e3;
+      }
+      .sidebar-btn.fullscreen:hover {
+        background: rgba(255, 255, 255, 0.22);
+        border-color: rgba(255, 255, 255, 0.4);
+      }
+      .sidebar-btn.fullscreen.active {
+        background: rgba(255, 255, 255, 0.35);
+        border-color: rgba(255, 255, 255, 0.55);
+        color: #f8fafc;
+      }
       /* Particles - Red (top) */
       .sidebar-btn[data-panel="particles"] {
         background: rgba(239, 68, 68, 0.2);
@@ -1388,12 +1402,19 @@
         </svg>
       </button>
       <button class="sidebar-btn" data-panel="camera" title="Camera">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <rect x="3" y="8" width="12" height="10" rx="2"/>
-          <circle cx="9" cy="13" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-          <circle cx="9" cy="13" r="1"/>
-          <path d="M15 10l5-3v10l-5-3z"/>
-          <rect x="4" y="5" width="4" height="3" rx="1"/>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7" cy="8" r="2.3"/>
+          <circle cx="12" cy="6.5" r="2.3"/>
+          <rect x="5" y="10" width="10" height="7" rx="1.5"/>
+          <path d="M15 12l4-2v8l-4-2z"/>
+        </svg>
+      </button>
+      <button id="fullscreenToggle" class="sidebar-btn fullscreen" title="Fullscreen" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M8 3H3v5"/>
+          <path d="M16 3h5v5"/>
+          <path d="M21 16v5h-5"/>
+          <path d="M3 16v5h5"/>
         </svg>
       </button>
     </div>
@@ -1737,32 +1758,25 @@
           </div>
           <div id="shadingControls" class="control-stack hidden-controls">
             <div class="control">
+              <label>Light Position</label>
+              <label for="lightPosX">X <span id="lightPosXVal"></span></label>
+              <input id="lightPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <label for="lightPosY">Y <span id="lightPosYVal"></span></label>
+              <input id="lightPosY" type="range" min="-2" max="2" step="0.05" data-default="1" />
+              <label for="lightPosZ">Z <span id="lightPosZVal"></span></label>
+              <input id="lightPosZ" type="range" min="-2" max="2" step="0.05" data-default="0.3" />
+              <div class="inline-toggle">
+                <label for="lightGizmo">Show Light Gizmo</label>
+                <button id="lightGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+              </div>
+            </div>
+            <div class="control">
               <label for="baseColor">Light Color <span id="baseColorVal"></span></label>
               <input id="baseColor" type="color" />
             </div>
             <div class="control">
-              <label for="lightIntensity">Intensity <span id="lightIntensityVal"></span></label>
+              <label for="lightIntensity">Light Intensity <span id="lightIntensityVal"></span></label>
               <input id="lightIntensity" type="range" min="0" max="3" step="0.1" data-default="1.2" />
-            </div>
-            <div class="control">
-              <label for="lightPosX">Light X <span id="lightPosXVal"></span></label>
-              <input id="lightPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="lightPosY">Light Y <span id="lightPosYVal"></span></label>
-              <input id="lightPosY" type="range" min="-2" max="2" step="0.05" data-default="1" />
-            </div>
-            <div class="control">
-              <label for="lightPosZ">Light Z <span id="lightPosZVal"></span></label>
-              <input id="lightPosZ" type="range" min="-2" max="2" step="0.05" data-default="0.3" />
-            </div>
-            <div class="control">
-              <label for="lightAzimuth">Azimuth <span id="lightAzimuthVal"></span></label>
-              <input id="lightAzimuth" type="range" min="0" max="360" step="1" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="lightElevation">Elevation <span id="lightElevationVal"></span></label>
-              <input id="lightElevation" type="range" min="-10" max="90" step="1" data-default="70" />
             </div>
           </div>
         </div>
@@ -1773,11 +1787,53 @@
           <span>Camera</span>
         </div>
         <div class="panel-content">
-          <div class="control">
-            <label for="dofEnabled">DOF</label>
-            <button id="dofEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
-          </div>
-          <div id="dofControls" class="control-stack hidden-controls">
+          <div id="dofControls" class="control-stack">
+            <div class="control">
+              <label for="cameraViewEnabled">Camera View</label>
+              <button id="cameraViewEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
+            <div class="control">
+              <label>Camera Position</label>
+              <label for="cameraPosX">X <span id="cameraPosXVal"></span></label>
+              <input id="cameraPosX" type="range" min="-10" max="10" step="0.1" data-default="0" />
+              <label for="cameraPosY">Y <span id="cameraPosYVal"></span></label>
+              <input id="cameraPosY" type="range" min="-10" max="10" step="0.1" data-default="0.4" />
+              <label for="cameraPosZ">Z <span id="cameraPosZVal"></span></label>
+              <input id="cameraPosZ" type="range" min="-10" max="10" step="0.1" data-default="6" />
+              <div class="inline-toggle">
+                <label for="cameraGizmo">Show Camera Gizmo</label>
+                <button id="cameraGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+              </div>
+            </div>
+            <div class="control rotation-group">
+              <label>Camera Rotation</label>
+              <div class="direction-3d">
+                <div class="rotation-axis">
+                  <span class="axis-label">X</span>
+                  <div id="cameraRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate camera X">
+                    <div id="cameraRotXDot" class="direction-wheel-dot"></div>
+                  </div>
+                  <span class="direction-values"><span id="cameraRotXVal"></span></span>
+                  <button id="cameraRotXReset" type="button" class="reset-btn direction-reset">ø</button>
+                </div>
+                <div class="rotation-axis">
+                  <span class="axis-label">Y</span>
+                  <div id="cameraRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate camera Y">
+                    <div id="cameraRotYDot" class="direction-wheel-dot"></div>
+                  </div>
+                  <span class="direction-values"><span id="cameraRotYVal"></span></span>
+                  <button id="cameraRotYReset" type="button" class="reset-btn direction-reset">ø</button>
+                </div>
+                <div class="rotation-axis">
+                  <span class="axis-label">Z</span>
+                  <div id="cameraRotZWheel" class="direction-wheel" role="slider" aria-label="Rotate camera Z">
+                    <div id="cameraRotZDot" class="direction-wheel-dot"></div>
+                  </div>
+                  <span class="direction-values"><span id="cameraRotZVal"></span></span>
+                  <button id="cameraRotZReset" type="button" class="reset-btn direction-reset">ø</button>
+                </div>
+              </div>
+            </div>
             <div class="control">
               <label for="focusDepth">Focus Depth <span id="focusDepthVal"></span></label>
               <input id="focusDepth" type="range" min="-6" max="6" step="0.1" data-default="0" />
