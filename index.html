@@ -62,6 +62,7 @@
       .sidebar-btn svg {
         width: 100%;
         height: 100%;
+        pointer-events: none;
       }
       /* Particles - Red (top) */
       .sidebar-btn[data-panel="particles"] {
@@ -283,6 +284,19 @@
       .control-stack {
         display: grid;
         gap: 10px;
+      }
+      /* Main toggle control-stacks (Forces, Shading, Camera) - transparent container */
+      #forcesControls,
+      #shadingControls,
+      #dofControls,
+      #turbulenceControls,
+      #curlControls,
+      #vortexControls,
+      #attractorControls,
+      #groundControls {
+        background: transparent;
+        border: none;
+        padding: 0;
       }
       .control label {
         display: flex;
@@ -534,44 +548,47 @@
           left: 12px;
           flex-direction: row;
           gap: 10px;
-          z-index: 1000;
+          z-index: 1001;
+          pointer-events: auto;
         }
         .sidebar-btn {
           width: 44px;
           height: 44px;
           font-size: 18px;
+          pointer-events: auto;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
         }
         
-        /* Panel container - full screen overlay */
+        /* Panel container - anchored to bottom left */
         .settings-panel-container {
           position: fixed;
-          inset: 0;
+          left: 0;
+          bottom: 72px;
+          right: 0;
           display: flex;
-          align-items: flex-start;
-          justify-content: center;
-          padding: 16px;
-          padding-top: 56px;
-          padding-bottom: 72px;
+          align-items: flex-end;
+          justify-content: flex-start;
+          padding: 12px;
           z-index: 999;
           background: transparent;
           pointer-events: none;
+          max-height: calc(100vh - 84px);
+          overflow-y: auto;
         }
         .settings-panel-container .panel {
           pointer-events: auto;
         }
         
-        
-        /* Panel - full width, no background */
+        /* Panel - no background, anchored bottom left */
         .settings-panel-container .panel {
-          width: 100%;
+          width: auto;
           max-width: 100%;
-          height: calc(100vh - 140px);
           background: transparent !important;
           border: none !important;
           box-shadow: none;
           backdrop-filter: none;
           display: none;
-          overflow-y: auto;
           pointer-events: auto;
         }
         .settings-panel-container .panel.active {
@@ -581,24 +598,76 @@
           display: none;
         }
         
-        /* Panel content - single column for better touch */
+        /* Panel content - column, items shrink to fit, bottom aligned */
         .panel-content {
           display: flex;
           flex-direction: column;
-          gap: 24px;
-          padding: 0 12px;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 0;
           pointer-events: auto;
         }
         
-        /* Control layout - label on top, input below */
-        .control {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          width: 100%;
+        /* Hide other settings when one is expanded */
+        .panel-content.has-expanded > *:not(.expanded):not(:has(.expanded)) {
+          display: none !important;
+        }
+        /* Also hide non-expanded settings inside Forces/Shading/Camera control-stacks */
+        #forcesControls:has(.expanded) > .setting:not(.expanded):not(:has(.expanded)),
+        #shadingControls:has(.expanded) > .setting:not(.expanded):not(:has(.expanded)),
+        #dofControls:has(.expanded) > .setting:not(.expanded):not(:has(.expanded)),
+        #turbulenceControls:has(.expanded) > .setting:not(.expanded),
+        #curlControls:has(.expanded) > .setting:not(.expanded),
+        #vortexControls:has(.expanded) > .setting:not(.expanded),
+        #attractorControls:has(.expanded) > .setting:not(.expanded),
+        #groundControls:has(.expanded) > .setting:not(.expanded) {
+          display: none !important;
         }
         
-        /* Labels - readable size, right-aligned value */
+        /* Control layout - each control is a mini-panel */
+        .panel-content > .control {
+          display: inline-flex;
+          flex-direction: column;
+          gap: 10px;
+          width: auto;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+          padding: 10px 14px;
+        }
+        /* Control colors per category */
+        .panel[data-panel="particles"] > .panel-content > .control {
+          border-color: rgba(239, 68, 68, 0.3);
+          background: rgba(239, 68, 68, 0.08);
+        }
+        .panel[data-panel="emitter"] > .panel-content > .control {
+          border-color: rgba(236, 72, 153, 0.3);
+          background: rgba(236, 72, 153, 0.08);
+        }
+        .panel[data-panel="forces"] > .panel-content > .control {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.08);
+        }
+        .panel[data-panel="shading"] > .panel-content > .control {
+          border-color: rgba(59, 130, 246, 0.3);
+          background: rgba(59, 130, 246, 0.08);
+        }
+        .panel[data-panel="camera"] > .panel-content > .control {
+          border-color: rgba(20, 184, 166, 0.3);
+          background: rgba(20, 184, 166, 0.08);
+        }
+        /* Nested controls (inside control-body, control-stack) - no panel styling */
+        .control-body .control,
+        .control-stack .control {
+          padding: 0;
+          background: transparent !important;
+          border: none !important;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          border-radius: 0;
+        }
+        
+        /* Labels - readable size */
         .control label {
           font-size: 14px;
           font-weight: 500;
@@ -609,6 +678,17 @@
           width: 100%;
           letter-spacing: 0.3px;
           gap: 12px;
+        }
+        /* Setting labels - name on left, + button on right */
+        .setting > label {
+          font-size: 15px;
+          font-weight: 600;
+        }
+        .setting > label .label-left {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 16px;
         }
         /* Value spans within labels - right aligned */
         .control label > span {
@@ -800,19 +880,52 @@
           margin: 0;
         }
         
-        /* Control stacks */
+        /* Control stacks - group related controls */
         .control-stack {
-          display: flex;
+          display: inline-flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 10px;
+          width: auto;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+          padding: 10px 14px;
+        }
+        .control-stack .control {
+          background: transparent;
+          border: none;
+          padding: 0;
+        }
+        /* Control stack colors per category */
+        .panel[data-panel="particles"] .control-stack {
+          border-color: rgba(239, 68, 68, 0.3);
+          background: rgba(239, 68, 68, 0.08);
+        }
+        .panel[data-panel="forces"] .control-stack {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.08);
+        }
+        .panel[data-panel="shading"] .control-stack {
+          border-color: rgba(59, 130, 246, 0.3);
+          background: rgba(59, 130, 246, 0.08);
+        }
+        .panel[data-panel="camera"] .control-stack {
+          border-color: rgba(20, 184, 166, 0.3);
+          background: rgba(20, 184, 166, 0.08);
         }
         
         /* Select controls with adjacent buttons */
         .select-control {
+          display: inline-flex;
           flex-direction: row;
           flex-wrap: wrap;
           align-items: center;
           gap: 12px;
+          width: auto;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+          padding: 10px 14px;
         }
         .select-control label {
           width: 100%;
@@ -820,6 +933,23 @@
         .select-control select {
           flex: 1;
           min-width: 0;
+        }
+        /* Select control colors per category */
+        .panel[data-panel="particles"] .select-control {
+          border-color: rgba(239, 68, 68, 0.3);
+          background: rgba(239, 68, 68, 0.08);
+        }
+        .panel[data-panel="emitter"] .select-control {
+          border-color: rgba(236, 72, 153, 0.3);
+          background: rgba(236, 72, 153, 0.08);
+        }
+        .panel[data-panel="shading"] .select-control {
+          border-color: rgba(59, 130, 246, 0.3);
+          background: rgba(59, 130, 246, 0.08);
+        }
+        .panel[data-panel="camera"] .select-control {
+          border-color: rgba(20, 184, 166, 0.3);
+          background: rgba(20, 184, 166, 0.08);
         }
         
         /* Editable values - touch-friendly inline display */
@@ -843,15 +973,15 @@
           margin-left: auto;
         }
         
-        /* Collapse indicators - match text height on mobile */
+        /* Collapse indicators - prominent button inside mini-panel */
         .collapse-indicator {
-          width: 18px;
-          height: 18px;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
           border: 2px solid rgba(255, 255, 255, 0.3);
           background: rgba(255, 255, 255, 0.1);
           color: rgba(255, 255, 255, 0.9);
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 600;
           cursor: pointer;
           transition: all 120ms ease;
@@ -874,17 +1004,38 @@
           border-color: rgba(255, 255, 255, 0.4);
         }
         
-        /* Collapsible settings - touch-friendly */
+        /* Collapsible settings - each is its own mini-panel */
         .setting {
           position: relative;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+          padding: 10px 14px;
+          width: auto;
+          display: inline-block;
         }
         .setting > label {
           cursor: pointer;
           -webkit-tap-highlight-color: transparent;
           touch-action: manipulation;
           user-select: none;
-          min-height: 44px;
-          padding: 8px 0;
+          min-height: 28px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          white-space: nowrap;
+        }
+        /* Hide value when collapsed */
+        .setting .value-row {
+          display: none;
+        }
+        .setting.expanded .value-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          justify-content: flex-start;
+          margin-top: 12px;
         }
         .setting .control-body {
           display: none;
@@ -896,17 +1047,98 @@
         .setting.expanded .control-body {
           display: flex;
         }
-        .value-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          justify-content: flex-start;
-        }
         .value-row .editable-value {
           min-width: 60px;
         }
         .value-row .reset-btn {
           margin-left: 0;
+        }
+        /* Mini-panel colors per category */
+        .panel[data-panel="particles"] .setting {
+          border-color: rgba(239, 68, 68, 0.3);
+          background: rgba(239, 68, 68, 0.08);
+        }
+        .panel[data-panel="emitter"] .setting {
+          border-color: rgba(236, 72, 153, 0.3);
+          background: rgba(236, 72, 153, 0.08);
+        }
+        .panel[data-panel="forces"] .setting {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.08);
+        }
+        .panel[data-panel="shading"] .setting {
+          border-color: rgba(59, 130, 246, 0.3);
+          background: rgba(59, 130, 246, 0.08);
+        }
+        .panel[data-panel="camera"] .setting {
+          border-color: rgba(20, 184, 166, 0.3);
+          background: rgba(20, 184, 166, 0.08);
+        }
+        /* Nested settings inside control-body shouldn't have panel styling */
+        .control-body .setting,
+        .control-stack .setting:not(:first-child) {
+          background: transparent;
+          border: none;
+          padding: 0;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
+          border-radius: 0;
+        }
+        
+        /* Main toggle control-stacks (Forces, Shading, Camera) - no group styling, individual panels */
+        #forcesControls,
+        #shadingControls,
+        #dofControls,
+        #turbulenceControls,
+        #curlControls,
+        #vortexControls,
+        #attractorControls,
+        #groundControls {
+          background: transparent !important;
+          border: none !important;
+          padding: 0 !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          gap: 8px;
+        }
+        /* Each setting inside main toggle stacks gets its own panel (same as Particles/Emitter) */
+        #forcesControls .setting,
+        #shadingControls .setting,
+        #dofControls .setting {
+          background: rgba(0, 0, 0, 0.3) !important;
+          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+          border-radius: 10px !important;
+          padding: 10px 14px !important;
+        }
+        /* Apply category colors to these panels */
+        #forcesControls .setting {
+          border-color: rgba(168, 85, 247, 0.3) !important;
+          background: rgba(168, 85, 247, 0.08) !important;
+        }
+        #shadingControls .setting {
+          border-color: rgba(59, 130, 246, 0.3) !important;
+          background: rgba(59, 130, 246, 0.08) !important;
+        }
+        #dofControls .setting {
+          border-color: rgba(20, 184, 166, 0.3) !important;
+          background: rgba(20, 184, 166, 0.08) !important;
+        }
+        /* Rotation groups - style as mini-panel */
+        .rotation-group {
+          display: inline-block;
+          width: auto;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+          padding: 10px 14px;
+        }
+        .panel[data-panel="emitter"] .rotation-group {
+          border-color: rgba(236, 72, 153, 0.3);
+          background: rgba(236, 72, 153, 0.08);
+        }
+        .panel[data-panel="forces"] .rotation-group {
+          border-color: rgba(168, 85, 247, 0.3);
+          background: rgba(168, 85, 247, 0.08);
         }
         
         /* === CATEGORY COLORS === */
@@ -1153,8 +1385,9 @@
           <span>Particles</span>
         </div>
         <div class="panel-content">
-          <div class="control select-control">
-            <label for="particleShape">Particle Shape</label>
+          <div class="control">
+            <label>Particle Shape</label>
+            <label for="particleShape">Shape</label>
             <select id="particleShape">
               <option value="circle">Circle (2D)</option>
               <option value="square">Square (2D)</option>
@@ -1162,68 +1395,41 @@
               <option value="sphere">Sphere (3D)</option>
               <option value="icosahedron">Icosahedron (3D)</option>
             </select>
-          </div>
-          <div id="spin2dControls" class="control-stack">
-            <div class="control">
-              <label for="spinRate2d">Spin Rate <span id="spinRate2dVal"></span></label>
-              <input id="spinRate2d" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
-            </div>
-          </div>
-          <div id="spin3dControls" class="control-stack">
-            <div class="control">
-              <label for="spinRateX">Spin X <span id="spinRateXVal"></span></label>
-              <input id="spinRateX" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
-            </div>
-            <div class="control">
-              <label for="spinRateY">Spin Y <span id="spinRateYVal"></span></label>
-              <input id="spinRateY" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
-            </div>
-            <div class="control">
-              <label for="spinRateZ">Spin Z <span id="spinRateZVal"></span></label>
-              <input id="spinRateZ" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            <div id="softnessControl">
+              <label for="softness">Soft Particles <span id="softnessVal"></span></label>
+              <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
             </div>
           </div>
           <div class="control">
-            <label for="spinRandom">Spin Random <span id="spinRandomVal"></span></label>
-            <input id="spinRandom" type="range" min="0" max="2" step="0.1" data-default="0.4" />
+            <label>Particle Size</label>
+            <label for="particleSize">Size <span id="particleSizeVal"></span></label>
+            <input id="particleSize" type="range" min="1" max="500" step="1" data-default="1" />
+            <label for="sizeCurveCanvas">Size Curve</label>
+            <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
           </div>
           <div class="control">
+            <label>Particle Life</label>
             <label for="lifeSeconds">Life (sec) <span id="lifeSecondsVal"></span></label>
             <input id="lifeSeconds" type="range" min="0.4" max="4" step="0.1" data-default="2.0" />
-          </div>
-          <div class="control">
             <label for="lifeRandom">Life Random <span id="lifeRandomVal"></span></label>
             <input id="lifeRandom" type="range" min="0" max="1" step="0.05" data-default="0" />
           </div>
           <div class="control">
-            <label for="particleSize">Particle Size <span id="particleSizeVal"></span></label>
-            <input id="particleSize" type="range" min="1" max="500" step="1" data-default="1" />
-          </div>
-          <div class="control">
-            <label for="sizeCurveCanvas">Size Curve</label>
-            <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
-          </div>
-          <div class="control" id="gradientControl">
-            <label for="colorGradientCanvas">Color Gradient</label>
-            <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
-          </div>
-          <div class="control select-control">
+            <label>Particle Color</label>
             <label for="colorMode">Color Mode</label>
             <select id="colorMode">
               <option value="gradient">Gradient Over Life</option>
               <option value="random">Random From Gradient</option>
               <option value="solid">Solid Color</option>
             </select>
-          </div>
-          <div class="control" id="solidColorControl">
-            <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
-            <input id="solidColor" type="color" />
-          </div>
-          <div class="control">
-            <label for="opacityCurveCanvas">Opacity Curve</label>
-            <canvas id="opacityCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
-          </div>
-          <div class="control select-control">
+            <div id="gradientControl">
+              <label for="colorGradientCanvas">Color Gradient</label>
+              <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
+            </div>
+            <div id="solidColorControl">
+              <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
+              <input id="solidColor" type="color" />
+            </div>
             <label for="blendMode">Blend Mode</label>
             <select id="blendMode">
               <option value="alpha">Normal</option>
@@ -1232,9 +1438,12 @@
               <option value="multiply">Multiply</option>
             </select>
           </div>
-          <div class="control" id="softnessControl">
-            <label for="softness">Soft Particles <span id="softnessVal"></span></label>
-            <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
+          <div class="control">
+            <label>Particle Opacity</label>
+            <label for="particleOpacity">Opacity <span id="particleOpacityVal"></span></label>
+            <input id="particleOpacity" type="range" min="0" max="1" step="0.01" data-default="1" />
+            <label for="opacityCurveCanvas">Opacity Curve</label>
+            <canvas id="opacityCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
           </div>
         </div>
       </div>
@@ -1261,38 +1470,29 @@
               <option value="line">Line</option>
             </select>
           </div>
-          <div class="control">
-            <label for="emitterGizmo">Show Emitter Gizmo</label>
-            <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-          </div>
-          <div class="control">
-            <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
-            <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
-          </div>
           <div id="emitterShapeControls" class="control-stack">
             <div class="control">
               <label for="emitterSize">Emitter Size <span id="emitterSizeVal"></span></label>
               <input id="emitterSize" type="range" min="0" max="1" step="0.02" data-default="0.2" />
             </div>
+            <div class="control select-control">
+              <label for="emitFrom">Emit From</label>
+              <select id="emitFrom">
+                <option value="volume">Volume</option>
+                <option value="edge">Edge</option>
+              </select>
+            </div>
+          </div>
           <div class="control">
-            <label for="emitterPosX">Emitter X <span id="emitterPosXVal"></span></label>
+            <label>Emitter Position</label>
+            <label for="emitterPosX">X <span id="emitterPosXVal"></span></label>
             <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-          </div>
-          <div class="control">
-            <label for="emitterPosY">Emitter Y <span id="emitterPosYVal"></span></label>
+            <label for="emitterPosY">Y <span id="emitterPosYVal"></span></label>
             <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-          </div>
-          <div class="control">
-            <label for="emitterPosZ">Emitter Z <span id="emitterPosZVal"></span></label>
+            <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
             <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-          </div>
-          <div class="control select-control">
-            <label for="emitFrom">Emit From</label>
-            <select id="emitFrom">
-              <option value="volume">Volume</option>
-              <option value="edge">Edge</option>
-            </select>
-          </div>
+            <label for="emitterGizmo">Show Emitter Gizmo</label>
+            <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
           </div>
           <div class="control rotation-group">
             <label>Emitter Rotation</label>
@@ -1324,16 +1524,36 @@
             </div>
           </div>
           <div class="control">
-            <label for="initialSpeed">Initial Speed <span id="initialSpeedVal"></span></label>
-            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
+            <label for="coneAngle">Emission Angle <span id="coneAngleVal"></span></label>
+            <input id="coneAngle" type="range" min="0" max="90" step="1" data-default="16" />
           </div>
           <div class="control">
+            <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
+            <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
+          </div>
+          <div class="control">
+            <label>Particle Speed</label>
+            <label for="initialSpeed">Initial Speed <span id="initialSpeedVal"></span></label>
+            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
             <label for="speedRandom">Speed Random <span id="speedRandomVal"></span></label>
             <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
           </div>
           <div class="control">
-            <label for="coneAngle">Cone Angle <span id="coneAngleVal"></span></label>
-            <input id="coneAngle" type="range" min="0" max="90" step="1" data-default="16" />
+            <label>Particle Spin</label>
+            <div id="spin2dControls">
+              <label for="spinRate2d">Spin Rate <span id="spinRate2dVal"></span></label>
+              <input id="spinRate2d" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+            <div id="spin3dControls">
+              <label for="spinRateX">Spin X <span id="spinRateXVal"></span></label>
+              <input id="spinRateX" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+              <label for="spinRateY">Spin Y <span id="spinRateYVal"></span></label>
+              <input id="spinRateY" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+              <label for="spinRateZ">Spin Z <span id="spinRateZVal"></span></label>
+              <input id="spinRateZ" type="range" min="-6" max="6" step="0.1" data-default="1.2" />
+            </div>
+            <label for="spinRandom">Spin Random <span id="spinRandomVal"></span></label>
+            <input id="spinRandom" type="range" min="0" max="2" step="0.1" data-default="0.4" />
           </div>
         </div>
       </div>

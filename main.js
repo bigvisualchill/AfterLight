@@ -78,6 +78,7 @@ let solidColor = [0.9, 0.9, 0.95];
 let noiseStrength = 0.0;
 let blendMode = "screen";
 let softness = 0.0;
+let particleOpacity = 1.0;
 
 const particles = [];
 
@@ -2306,6 +2307,57 @@ function setToggleState(button, enabled) {
   button.textContent = enabled ? "On" : "Off";
 }
 
+// Helper to expand the parent setting when a toggle is turned on
+function expandParentSetting(element, relatedControlsId = null) {
+  const setting = element.closest(".setting");
+  if (setting && !setting.classList.contains("expanded")) {
+    setting.classList.add("expanded");
+    const indicator = setting.querySelector(".collapse-indicator span");
+    if (indicator) {
+      indicator.textContent = "−";
+    }
+    // Update panel-content state for mobile
+    const panelContent = setting.closest(".panel-content");
+    if (panelContent) {
+      panelContent.classList.add("has-expanded");
+    }
+  }
+  
+  // If there are related controls (sibling control-stack), mark them as expanded too
+  if (relatedControlsId) {
+    const relatedControls = document.getElementById(relatedControlsId);
+    if (relatedControls) {
+      relatedControls.classList.add("expanded");
+    }
+  }
+}
+
+// Helper to collapse the parent setting when a toggle is turned off
+function collapseParentSetting(element, relatedControlsId = null) {
+  const setting = element.closest(".setting");
+  if (setting && setting.classList.contains("expanded")) {
+    setting.classList.remove("expanded");
+    const indicator = setting.querySelector(".collapse-indicator span");
+    if (indicator) {
+      indicator.textContent = "+";
+    }
+    // Update panel-content state for mobile
+    const panelContent = setting.closest(".panel-content");
+    if (panelContent) {
+      const hasExpanded = panelContent.querySelector(".setting.expanded") !== null;
+      panelContent.classList.toggle("has-expanded", hasExpanded);
+    }
+  }
+  
+  // If there are related controls (sibling control-stack), remove expanded class too
+  if (relatedControlsId) {
+    const relatedControls = document.getElementById(relatedControlsId);
+    if (relatedControls) {
+      relatedControls.classList.remove("expanded");
+    }
+  }
+}
+
 const forcesControls = document.getElementById("forcesControls");
 forcesControls.style.display = forcesEnabled ? "" : "none";
 
@@ -2337,6 +2389,7 @@ setToggleState(vortexToggle, vortexEnabled);
 vortexToggle.addEventListener("click", () => {
   vortexEnabled = !vortexEnabled;
   setToggleState(vortexToggle, vortexEnabled);
+  if (vortexEnabled) expandParentSetting(vortexToggle);
   updateForceModeUI();
 });
 
@@ -2345,6 +2398,7 @@ setToggleState(attractorToggle, attractorEnabled);
 attractorToggle.addEventListener("click", () => {
   attractorEnabled = !attractorEnabled;
   setToggleState(attractorToggle, attractorEnabled);
+  if (attractorEnabled) expandParentSetting(attractorToggle);
   updateForceModeUI();
 });
 
@@ -2371,6 +2425,7 @@ setToggleState(groundToggle, groundEnabled);
 groundToggle.addEventListener("click", () => {
   groundEnabled = !groundEnabled;
   setToggleState(groundToggle, groundEnabled);
+  if (groundEnabled) expandParentSetting(groundToggle);
   groundControls.style.display = groundEnabled ? "" : "none";
 });
 const forcesToggle = document.getElementById("forcesEnabled");
@@ -2378,6 +2433,11 @@ setToggleState(forcesToggle, forcesEnabled);
 forcesToggle.addEventListener("click", () => {
   forcesEnabled = !forcesEnabled;
   setToggleState(forcesToggle, forcesEnabled);
+  if (forcesEnabled) {
+    expandParentSetting(forcesToggle, "forcesControls");
+  } else {
+    collapseParentSetting(forcesToggle, "forcesControls");
+  }
   forcesControls.style.display = forcesEnabled ? "" : "none";
 });
 bindRange("lifeSeconds", "lifeSecondsVal", () => lifeSeconds, (v) => {
@@ -2468,6 +2528,10 @@ bindRange("softness", "softnessVal", () => softness, (v) => {
   softness = Math.max(0, Math.min(1, v));
   return softness;
 });
+bindRange("particleOpacity", "particleOpacityVal", () => particleOpacity, (v) => {
+  particleOpacity = Math.max(0, Math.min(1, v));
+  return particleOpacity;
+});
 bindRange("lightIntensity", "lightIntensityVal", () => lightIntensity, (v) => {
   lightIntensity = Math.max(0, v);
   return lightIntensity;
@@ -2506,6 +2570,11 @@ setToggleState(dofToggle, dofEnabled);
 dofToggle.addEventListener("click", () => {
   dofEnabled = !dofEnabled;
   setToggleState(dofToggle, dofEnabled);
+  if (dofEnabled) {
+    expandParentSetting(dofToggle, "dofControls");
+  } else {
+    collapseParentSetting(dofToggle, "dofControls");
+  }
   dofControls.style.display = dofEnabled ? "" : "none";
 });
 
@@ -2516,6 +2585,11 @@ setToggleState(shadingToggle, shadingEnabled);
 shadingToggle.addEventListener("click", () => {
   shadingEnabled = !shadingEnabled;
   setToggleState(shadingToggle, shadingEnabled);
+  if (shadingEnabled) {
+    expandParentSetting(shadingToggle, "shadingControls");
+  } else {
+    collapseParentSetting(shadingToggle, "shadingControls");
+  }
   shadingControls.style.display = shadingEnabled ? "" : "none";
 });
 
@@ -2902,18 +2976,30 @@ function setupSettingCollapsibles() {
   document.querySelectorAll(".panel-content .control").forEach((control) => {
     // Skip direction controls (they're inside rotation groups)
     if (control.classList.contains("direction-control")) return;
+    // Skip controls inside control-body (they're nested inside another setting)
+    if (control.closest(".control-body")) return;
     
     const label = control.querySelector("label");
     if (!label || label.dataset.toggleBound) return;
     label.dataset.toggleBound = "true";
+    
+    // Check if this is a main toggle control (Forces, Shading, Camera) - these use the On/Off button instead of +/-
+    const isMainToggleControl = control.querySelector("#forcesEnabled, #shadingEnabled, #dofEnabled") !== null;
+    
     control.classList.add("setting");
     control.classList.remove("expanded");
 
     const body = document.createElement("div");
     body.className = "control-body";
     const nodes = Array.from(control.childNodes);
+    
+    // For main toggle controls, keep the pill-toggle button visible (not in control-body)
+    const mainToggleBtn = isMainToggleControl ? control.querySelector(".pill-toggle") : null;
+    
     nodes.forEach((node) => {
       if (node === label) return;
+      // Keep the main toggle button outside control-body
+      if (mainToggleBtn && node === mainToggleBtn) return;
       body.appendChild(node);
     });
     control.appendChild(body);
@@ -2961,8 +3047,8 @@ function setupSettingCollapsibles() {
       label.prepend(leftWrap);
     }
     
-    // Add collapse indicator (+/- circle button)
-    if (!label.querySelector(".collapse-indicator")) {
+    // Add collapse indicator (+/- circle button) - but not for main toggle controls
+    if (!label.querySelector(".collapse-indicator") && !isMainToggleControl) {
       const indicator = document.createElement("button");
       indicator.type = "button";
       indicator.className = "collapse-indicator";
@@ -2977,40 +3063,58 @@ function setupSettingCollapsibles() {
     const indicator = label.querySelector(".collapse-indicator");
     const indicatorText = indicator ? indicator.querySelector("span") : null;
     
-    // Handle collapse button click
-    if (indicator && indicatorText) {
-      indicator.addEventListener("click", (event) => {
-        event.stopPropagation();
-        control.classList.toggle("expanded");
-        indicatorText.textContent = control.classList.contains("expanded") ? "−" : "+";
-        if (control.classList.contains("expanded")) {
-          sizeCurveEditor.resize();
-          opacityCurveEditor.resize();
-          gradientEditor.resize();
-        }
-      });
-    }
-    
-    // Handle label click (but not on the button itself)
-    label.addEventListener("click", (event) => {
-      // Don't toggle if clicking on interactive elements within the control body or the collapse button
-      const target = event.target;
-      if (target.closest(".control-body") || 
-          (target.closest("button") && !target.closest(".collapse-indicator")) || 
-          target.closest(".editable-value")) {
-        return;
+    // Helper to update parent panel-content state (for mobile: hide other settings when one is expanded)
+    const updatePanelContentState = () => {
+      const panelContent = control.closest(".panel-content");
+      if (panelContent) {
+        const hasExpanded = panelContent.querySelector(".setting.expanded") !== null;
+        panelContent.classList.toggle("has-expanded", hasExpanded);
       }
-      event.preventDefault();
+    };
+    
+    // Toggle function
+    const toggleSetting = () => {
       control.classList.toggle("expanded");
       if (indicatorText) {
         indicatorText.textContent = control.classList.contains("expanded") ? "−" : "+";
       }
+      updatePanelContentState();
       if (control.classList.contains("expanded")) {
         sizeCurveEditor.resize();
         opacityCurveEditor.resize();
         gradientEditor.resize();
       }
-    });
+    };
+    
+    // Handle collapse button click
+    if (indicator) {
+      indicator.addEventListener("click", (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        toggleSetting();
+      });
+    }
+    
+    // Handle clicks on the setting panel itself (when collapsed, clicking anywhere opens it)
+    // Skip this for main toggle controls - they only expand/collapse via the On/Off button
+    if (!isMainToggleControl) {
+      control.addEventListener("click", (event) => {
+        const target = event.target;
+        // Don't toggle if click came from collapse indicator (it has its own handler)
+        if (target.closest(".collapse-indicator")) return;
+        // Don't toggle if clicking on interactive elements inside the control body
+        if (target.closest(".control-body")) return;
+        // Don't toggle if clicking on other buttons
+        if (target.closest("button")) return;
+        // Don't toggle if clicking on editable values
+        if (target.closest(".editable-value")) return;
+        // Don't toggle if clicking on inputs
+        if (target.closest("input") || target.closest("select") || target.closest("canvas")) return;
+        
+        event.preventDefault();
+        toggleSetting();
+      });
+    }
   });
 }
 setupSettingCollapsibles();
@@ -3146,7 +3250,10 @@ function closeCurrentPanel() {
 }
 
 document.querySelectorAll(".sidebar-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
+  const handleSidebarClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
     const panelName = btn.dataset.panel;
     const panel = document.querySelector(`.panel[data-panel="${panelName}"]`);
     
@@ -3168,7 +3275,9 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
       opacityCurveEditor.resize();
       gradientEditor.resize();
     }
-  });
+  };
+  
+  btn.addEventListener("click", handleSidebarClick);
 });
 
 window.addEventListener("resize", () => {
@@ -3534,7 +3643,7 @@ function frame() {
       const sizePixels = particleSize * 5;
       const baseUnitsPerPixel = worldUnitsPerPixelAt(target);
       const size = evalCurve(sizeCurvePoints, lifeT) * sizePixels * baseUnitsPerPixel;
-      const opacity = evalCurve(opacityCurvePoints, lifeT);
+      const opacity = evalCurve(opacityCurvePoints, lifeT) * particleOpacity;
       let color;
       if (particleColorMode === "solid") {
         color = solidColor;
