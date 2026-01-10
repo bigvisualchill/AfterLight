@@ -1,6 +1,32 @@
 const canvas = document.getElementById("gfx");
 const gizmoCanvas = document.getElementById("gizmo");
 const gizmoCtx = gizmoCanvas ? gizmoCanvas.getContext("2d") : null;
+const perfHud = document.getElementById("perfHud");
+const perfFps = document.getElementById("perfFps");
+const perfCpu = document.getElementById("perfCpu");
+const perfGpu = document.getElementById("perfGpu");
+let perfLastFrame = performance.now();
+let perfAccum = 0;
+let perfCount = 0;
+let perfLastUpdate = performance.now();
+let perfGpuMs = 0;
+let perfGpuInFlight = false;
+let perfLastGpuSample = 0;
+const PERF_UPDATE_MS = 250;
+const PERF_GPU_SAMPLE_MS = 600;
+
+function updatePerfHud(now) {
+  if (!perfHud || !perfFps || !perfCpu || !perfGpu) return;
+  if (now - perfLastUpdate < PERF_UPDATE_MS) return;
+  const avg = perfAccum / Math.max(1, perfCount);
+  const fps = avg > 0 ? 1000 / avg : 0;
+  perfFps.textContent = fps.toFixed(0);
+  perfCpu.textContent = avg.toFixed(1);
+  perfGpu.textContent = perfGpuMs > 0 ? perfGpuMs.toFixed(1) : "--";
+  perfAccum = 0;
+  perfCount = 0;
+  perfLastUpdate = now;
+}
 
 if (!navigator.gpu) {
   document.body.innerHTML = "WebGPU not supported in this browser.";
@@ -49,6 +75,7 @@ let emitterSize = 0.2;
 let emitterShape = "point";
 let emitMode = "auto";
 let particleShape = "circle";
+let sphereSubdivisions = 2;
 let emitFrom = "volume";
 let coneAngle = 16;
 let directionRotX = 0;
@@ -713,6 +740,113 @@ function buildSphere(segments = 16, rings = 12) {
   return new Float32Array(data);
 }
 
+function buildIcosphere(subdivisions = 2) {
+  const t = (1 + Math.sqrt(5)) / 2;
+  const verts = [
+    [-1, t, 0],
+    [1, t, 0],
+    [-1, -t, 0],
+    [1, -t, 0],
+    [0, -1, t],
+    [0, 1, t],
+    [0, -1, -t],
+    [0, 1, -t],
+    [t, 0, -1],
+    [t, 0, 1],
+    [-t, 0, -1],
+    [-t, 0, 1],
+  ].map((v) => normalizeVec3(v));
+  let faces = [
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
+  ];
+  for (let i = 0; i < subdivisions; i += 1) {
+    const midpointCache = new Map();
+    const nextFaces = [];
+    const midpointIndex = (a, b) => {
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      const cached = midpointCache.get(key);
+      if (cached !== undefined) return cached;
+      const v0 = verts[a];
+      const v1 = verts[b];
+      const mid = normalizeVec3([
+        (v0[0] + v1[0]) * 0.5,
+        (v0[1] + v1[1]) * 0.5,
+        (v0[2] + v1[2]) * 0.5,
+      ]);
+      const idx = verts.length;
+      verts.push(mid);
+      midpointCache.set(key, idx);
+      return idx;
+    };
+    for (const face of faces) {
+      const a = face[0];
+      const b = face[1];
+      const c = face[2];
+      const ab = midpointIndex(a, b);
+      const bc = midpointIndex(b, c);
+      const ca = midpointIndex(c, a);
+      nextFaces.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
+    }
+    faces = nextFaces;
+  }
+  const data = [];
+  for (const face of faces) {
+    let a = face[0];
+    let b = face[1];
+    let c = face[2];
+    const va = verts[a];
+    const vb = verts[b];
+    const vc = verts[c];
+    const ab = [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]];
+    const ac = [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]];
+    const cross = [
+      ab[1] * ac[2] - ab[2] * ac[1],
+      ab[2] * ac[0] - ab[0] * ac[2],
+      ab[0] * ac[1] - ab[1] * ac[0],
+    ];
+    if (cross[0] * va[0] + cross[1] * va[1] + cross[2] * va[2] < 0) {
+      const tmp = b;
+      b = c;
+      c = tmp;
+    }
+    const ids = [a, b, c];
+    for (const idx of ids) {
+      const v = verts[idx];
+      data.push(v[0], v[1], v[2], v[0], v[1], v[2]);
+    }
+  }
+  return new Float32Array(data);
+}
+
+function rebuildSphereMesh(subdivisions) {
+  if (meshBuffers.sphere && meshBuffers.sphere.buffer) {
+    meshBuffers.sphere.buffer.destroy();
+  }
+  meshBuffers.sphere = createMeshBuffer(buildIcosphere(subdivisions));
+  if (particleShape === "sphere") {
+    currentMesh = meshBuffers.sphere;
+  }
+}
+
 function buildQuad() {
   const n = [0, 0, 1];
   const v = [
@@ -742,7 +876,7 @@ function createMeshBuffer(data) {
 const meshBuffers = {
   cube: createMeshBuffer(buildCube()),
   icosahedron: createMeshBuffer(buildIcosahedron()),
-  sphere: createMeshBuffer(buildSphere()),
+  sphere: createMeshBuffer(buildIcosphere(sphereSubdivisions)),
   square: createMeshBuffer(buildQuad()),
   circle: createMeshBuffer(buildQuad()),
 };
@@ -874,7 +1008,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
-  let normal = normalize(input.normal);
+  var normal = normalize(input.normal);
   let light = normalize(uniforms.lightDirIntensity.xyz);
   let diff = max(dot(normal, light), 0.0) * uniforms.lightDirIntensity.w;
   let lifeT = clamp(input.lifeT, 0.0, 1.0);
@@ -950,7 +1084,7 @@ const particlePipelineLayout = device.createPipelineLayout({
   bindGroupLayouts: [particleBindGroupLayout],
 });
 
-function createParticlePipeline(mode, depthWriteEnabled = false) {
+function createParticlePipeline(mode, depthWriteEnabled = false, cullMode = "none", frontFace = "ccw") {
   let blend;
   if (mode === "additive") {
     blend = {
@@ -1008,7 +1142,7 @@ function createParticlePipeline(mode, depthWriteEnabled = false) {
       entryPoint: "fs_main",
       targets: [{ format, blend }],
     },
-    primitive: { topology: "triangle-list", cullMode: "none" },
+    primitive: { topology: "triangle-list", cullMode, frontFace },
     depthStencil: {
       format: "depth24plus",
       depthWriteEnabled,
@@ -1028,6 +1162,18 @@ const particlePipelinesDepth = {
   additive: createParticlePipeline("additive", true),
   screen: createParticlePipeline("screen", true),
   multiply: createParticlePipeline("multiply", true),
+};
+const particlePipelinesCull = {
+  alpha: createParticlePipeline("alpha", false, "back", "ccw"),
+  additive: createParticlePipeline("additive", false, "back", "ccw"),
+  screen: createParticlePipeline("screen", false, "back", "ccw"),
+  multiply: createParticlePipeline("multiply", false, "back", "ccw"),
+};
+const particlePipelinesDepthCull = {
+  alpha: createParticlePipeline("alpha", true, "back", "ccw"),
+  additive: createParticlePipeline("additive", true, "back", "ccw"),
+  screen: createParticlePipeline("screen", true, "back", "ccw"),
+  multiply: createParticlePipeline("multiply", true, "back", "ccw"),
 };
 
 const bindGroup = device.createBindGroup({
@@ -1185,7 +1331,8 @@ function updateCamera(timeSeconds) {
   uniformData[22] = lightColor[2];
   uniformData[23] = timeSeconds;
   uniformData[24] = particleShape === "square" ? 1 : particleShape === "circle" ? 2 : 0;
-  uniformData[25] = 1.0;
+  uniformData[25] =
+    particleShape === "sphere" ? 1 : particleShape === "icosahedron" ? 2 : particleShape === "cube" ? 3 : 0;
   uniformData[26] = noiseStrength;
   uniformData[27] = softness;
   uniformData[28] = view[0];
@@ -3116,12 +3263,28 @@ bindRange("softness", "softnessVal", () => softness, (v) => {
   softness = Math.max(0, Math.min(1, v));
   return softness;
 });
+bindRange("sphereDetail", "sphereDetailVal", () => sphereSubdivisions, (v) => {
+  const next = Math.max(0, Math.min(6, Math.round(v)));
+  if (next !== sphereSubdivisions) {
+    sphereSubdivisions = next;
+    rebuildSphereMesh(sphereSubdivisions);
+  }
+  return sphereSubdivisions;
+});
 const softnessInput = document.getElementById("softness");
 const softnessReset = document.getElementById("softnessReset");
 if (softnessReset && softnessInput) {
   softnessReset.addEventListener("click", () => {
     softnessInput.value = softnessInput.dataset.default;
     softnessInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+const sphereDetailInput = document.getElementById("sphereDetail");
+const sphereDetailReset = document.getElementById("sphereDetailReset");
+if (sphereDetailReset && sphereDetailInput) {
+  sphereDetailReset.addEventListener("click", () => {
+    sphereDetailInput.value = sphereDetailInput.dataset.default;
+    sphereDetailInput.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
 bindRange("particleOpacity", "particleOpacityVal", () => particleOpacity, (v) => {
@@ -3201,17 +3364,28 @@ emitModeSelect.addEventListener("change", () => {
 
 const particleShapeSelect = document.getElementById("particleShape");
 const softnessControl = document.getElementById("softnessControl");
+const sphereDetailControl = document.getElementById("sphereDetailControl");
 const spin2dControls = document.getElementById("spin2dControls");
 const spin3dControls = document.getElementById("spin3dControls");
 const is2DShape = () => particleShape === "circle" || particleShape === "square";
-softnessControl.style.display = is2DShape() ? "" : "none";
+if (softnessControl) {
+  softnessControl.style.display = is2DShape() ? "" : "none";
+}
+if (sphereDetailControl) {
+  sphereDetailControl.style.display = particleShape === "sphere" ? "" : "none";
+}
 spin2dControls.style.display = is2DShape() ? "" : "none";
 spin3dControls.style.display = is2DShape() ? "none" : "";
 particleShapeSelect.value = particleShape;
 particleShapeSelect.addEventListener("change", () => {
   particleShape = particleShapeSelect.value;
   currentMesh = meshBuffers[particleShape] || meshBuffers.cube;
-  softnessControl.style.display = is2DShape() ? "" : "none";
+  if (softnessControl) {
+    softnessControl.style.display = is2DShape() ? "" : "none";
+  }
+  if (sphereDetailControl) {
+    sphereDetailControl.style.display = particleShape === "sphere" ? "" : "none";
+  }
   spin2dControls.style.display = is2DShape() ? "" : "none";
   spin3dControls.style.display = is2DShape() ? "none" : "";
 });
@@ -4199,6 +4373,11 @@ function frame() {
   const now = performance.now();
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
+  const frameMs = now - perfLastFrame;
+  perfLastFrame = now;
+  perfAccum += frameMs;
+  perfCount += 1;
+  updatePerfHud(now);
 
   for (let i = particles.length - 1; i >= 0; i -= 1) {
     const p = particles[i];
@@ -4319,6 +4498,8 @@ function frame() {
     }
   }
 
+  updateCamera(now * 0.001);
+
   const drawCount = particles.length;
   
   // Grow buffers if needed (double capacity each time)
@@ -4327,6 +4508,22 @@ function frame() {
   }
   
   if (drawCount > 0) {
+    if (drawCount > 1) {
+      const ex = activeViewEye[0];
+      const ey = activeViewEye[1];
+      const ez = activeViewEye[2];
+      const fx = cameraForward[0];
+      const fy = cameraForward[1];
+      const fz = cameraForward[2];
+      for (let i = 0; i < drawCount; i += 1) {
+        const p = particles[i];
+        const dx = p.pos[0] - ex;
+        const dy = p.pos[1] - ey;
+        const dz = p.pos[2] - ez;
+        p.sortDepth = dx * fx + dy * fy + dz * fz;
+      }
+      particles.sort((a, b) => b.sortDepth - a.sortDepth);
+    }
     for (let i = 0; i < drawCount; i += 1) {
       const p = particles[i];
       const lifeT = p.age / p.life;
@@ -4363,8 +4560,6 @@ function frame() {
     }
     device.queue.writeBuffer(instanceBuffer, 0, instanceData.buffer, 0, drawCount * instanceStride);
   }
-
-  updateCamera(now * 0.001);
   drawEmitterGizmo();
   if (focusNavigatorEnabled) {
     drawFocusNavigator();
@@ -4411,7 +4606,10 @@ function frame() {
       depthStoreOp: "store",
     },
   });
-  const pipelineSet = cameraViewActive ? particlePipelinesDepth : particlePipelines;
+  const useCull = particleShape === "cube" || particleShape === "sphere" || particleShape === "icosahedron";
+  const pipelineSet = cameraViewActive
+    ? (useCull ? particlePipelinesDepthCull : particlePipelinesDepth)
+    : (useCull ? particlePipelinesCull : particlePipelines);
   const activePipeline = pipelineSet[blendMode] || pipelineSet.alpha;
   particlePass.setPipeline(activePipeline);
   particlePass.setBindGroup(0, bindGroup);
@@ -4440,6 +4638,18 @@ function frame() {
     dofPass.end();
   }
   device.queue.submit([encoder.finish()]);
+  if (perfHud && !perfGpuInFlight && now - perfLastGpuSample >= PERF_GPU_SAMPLE_MS) {
+    perfGpuInFlight = true;
+    const gpuStart = performance.now();
+    device.queue.onSubmittedWorkDone().then(() => {
+      perfGpuMs = performance.now() - gpuStart;
+      perfGpuInFlight = false;
+      perfLastGpuSample = performance.now();
+    }).catch(() => {
+      perfGpuInFlight = false;
+      perfLastGpuSample = performance.now();
+    });
+  }
 
   requestAnimationFrame(frame);
 }

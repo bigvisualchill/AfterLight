@@ -349,6 +349,11 @@
         gap: 7px;
         margin-top: 6px;
       }
+      #sphereDetailControl {
+        display: grid;
+        gap: 7px;
+        margin-top: 6px;
+      }
       .slider-with-reset {
         display: grid;
         grid-template-columns: 1fr 24px;
@@ -466,6 +471,12 @@
       .setting.expanded .control-body.range-body input[type="range"] {
         grid-column: 1 / -1;
         width: 100%;
+      }
+      .setting.expanded .control.control-shape .control-body.range-body {
+        display: flex;
+        flex-direction: column;
+        grid-template-columns: none;
+        align-items: stretch;
       }
       .setting.expanded .control-body.range-body > label,
       .setting.expanded .control-body.range-body > canvas,
@@ -1472,11 +1483,37 @@
           font-size: 10px;
         }
       }
+      .perf-hud {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 1002;
+        display: grid;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(8, 12, 16, 0.5);
+        color: rgba(220, 232, 244, 0.85);
+        font: 11px/1.3 "SF Mono", Menlo, monospace;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        pointer-events: none;
+      }
+      .perf-hud .label {
+        color: rgba(160, 180, 200, 0.8);
+        letter-spacing: 0.02em;
+      }
     </style>
   </head>
   <body>
     <canvas id="gfx"></canvas>
     <canvas id="gizmo"></canvas>
+    <div id="perfHud" class="perf-hud" aria-hidden="true">
+      <div><span class="label">FPS</span> <span id="perfFps">--</span></div>
+      <div><span class="label">CPU</span> <span id="perfCpu">--</span> ms</div>
+      <div><span class="label">GPU</span> <span id="perfGpu">--</span> ms</div>
+    </div>
     <div class="settings-sidebar">
       <button class="sidebar-btn" data-panel="particles" title="Particles">
         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -1575,6 +1612,13 @@
               <div class="slider-with-reset">
                 <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
                 <button id="softnessReset" type="button" class="reset-btn">ø</button>
+              </div>
+            </div>
+            <div id="sphereDetailControl">
+              <label for="sphereDetail">Sphere Detail (Subdivisions) <span id="sphereDetailVal"></span></label>
+              <div class="slider-with-reset">
+                <input id="sphereDetail" type="range" min="0" max="6" step="1" data-default="2" />
+                <button id="sphereDetailReset" type="button" class="reset-btn">ø</button>
               </div>
             </div>
           </div>
