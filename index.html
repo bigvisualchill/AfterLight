@@ -78,6 +78,58 @@
         border-color: rgba(255, 255, 255, 0.55);
         color: #f8fafc;
       }
+      /* Focus Navigator Window */
+      .focus-navigator {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        width: 220px;
+        height: 220px;
+        background: rgba(10, 15, 20, 0.85);
+        border: 2px solid rgba(20, 184, 166, 0.4);
+        border-radius: 12px;
+        z-index: 200;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+      .navigator-views {
+        display: flex;
+        gap: 4px;
+        padding: 6px 8px;
+        background: rgba(0, 0, 0, 0.3);
+        border-bottom: 1px solid rgba(20, 184, 166, 0.3);
+      }
+      .nav-view-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: rgba(20, 184, 166, 0.15);
+        border: 1px solid rgba(20, 184, 166, 0.4);
+        color: rgba(20, 184, 166, 0.8);
+        font: bold 12px "SF Mono", Menlo, monospace;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .nav-view-btn:hover {
+        background: rgba(20, 184, 166, 0.25);
+        border-color: rgba(20, 184, 166, 0.6);
+        color: rgba(20, 184, 166, 1);
+      }
+      .nav-view-btn.active {
+        background: rgba(20, 184, 166, 0.35);
+        border-color: rgba(20, 184, 166, 0.7);
+        color: rgba(20, 184, 166, 1);
+      }
+      #navigatorCanvas {
+        flex: 1;
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+      }
       /* Particles - Red (top) */
       .sidebar-btn[data-panel="particles"] {
         background: rgba(239, 68, 68, 0.2);
@@ -284,19 +336,46 @@
         letter-spacing: 0.02em;
       }
       .panel-content {
-        padding: 10px 12px 14px;
+        padding: 12px 14px 16px;
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
       .control {
         display: grid;
-        gap: 6px;
+        gap: 7px;
+      }
+      #softnessControl {
+        display: grid;
+        gap: 7px;
+        margin-top: 6px;
+      }
+      .slider-with-reset {
+        display: grid;
+        grid-template-columns: 1fr 24px;
+        align-items: center;
+        gap: 8px;
+      }
+      .slider-with-reset input[type="range"] {
+        width: 100%;
+      }
+      .slider-with-reset .reset-btn {
+        justify-self: end;
+      }
+      .control.control-shape .control-body,
+      .control.control-shape .control-body.range-body {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .control.control-shape #softnessControl {
+        margin-top: 8px;
       }
       .inline-toggle {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: 12px;
       }
       .inline-toggle .pill-toggle {
         margin-left: auto;
@@ -306,7 +385,7 @@
       }
       .control-stack {
         display: grid;
-        gap: 10px;
+        gap: 12px;
       }
       /* Main toggle control-stacks (Forces, Shading, Camera) - transparent container */
       #forcesControls,
@@ -337,7 +416,7 @@
       .label-left {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 7px;
         flex: 1;
         min-width: 0;
       }
@@ -373,9 +452,9 @@
       .setting.expanded .collapse-indicator {
         /* Text changes handled by JS */
       }
-      .setting .control-body {
+      .setting       .control-body {
         display: none;
-        gap: 6px;
+        gap: 7px;
       }
       .setting.expanded .control-body {
         display: grid;
@@ -388,10 +467,17 @@
         grid-column: 1 / -1;
         width: 100%;
       }
+      .setting.expanded .control-body.range-body > label,
+      .setting.expanded .control-body.range-body > canvas,
+      .setting.expanded .control-body.range-body > .curve-editor,
+      .setting.expanded .control-body.range-body > .gradient-editor {
+        grid-column: 1 / -1;
+        width: 100%;
+      }
       .value-row {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 7px;
         grid-column: 1 / -1;
       }
       .value-row .editable-value {
@@ -435,14 +521,20 @@
         border-radius: 6px;
         padding: 5px 7px;
         font: 10.5px/1.2 "SF Mono", Menlo, monospace;
+        text-align: left;
+        text-align-last: left;
+      }
+      #particleShape {
+        width: auto;
+        min-width: 120px;
       }
       .direction-control {
         align-items: start;
       }
       .direction-values {
         display: inline-flex;
-        gap: 6px;
-        margin-left: 6px;
+        gap: 7px;
+        margin-left: 7px;
         color: #cfd8e3;
         font-size: 11px;
       }
@@ -453,7 +545,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
+        gap: 7px;
       }
       .axis-label {
         font-weight: 600;
@@ -490,7 +582,7 @@
       }
       .direction-3d {
         display: grid;
-        gap: 10px;
+        gap: 12px;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         align-items: start;
       }
@@ -1043,8 +1135,9 @@
           border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 10px;
           padding: 10px 14px;
-          width: auto;
-          display: inline-block;
+          width: 100%;
+          display: block;
+          box-sizing: border-box;
         }
         .setting > label {
           cursor: pointer;
@@ -1078,6 +1171,10 @@
         }
         .setting.expanded .control-body {
           display: flex;
+        }
+        .setting.expanded .control-body.range-body {
+          display: flex;
+          flex-direction: column;
         }
         .value-row .editable-value {
           min-width: 60px;
@@ -1189,6 +1286,29 @@
         .panel[data-panel="particles"] .gradient-editor,
         .panel[data-panel="particles"] .editable-value {
           border-color: rgba(239, 68, 68, 0.5);
+        }
+        .panel[data-panel="particles"] select {
+          color: rgba(255, 231, 231, 0.98);
+          -webkit-text-fill-color: rgba(255, 231, 231, 0.98);
+          background: rgba(12, 8, 10, 0.45);
+        }
+        /* Particle Shape control - ensure proper width for select */
+        .control:has(#particleShape) {
+          min-width: 200px;
+        }
+        #particleShape {
+          display: block !important;
+          width: 100% !important;
+          min-width: 180px !important;
+          padding: 10px 12px !important;
+          text-align: left;
+          text-align-last: left;
+          -webkit-appearance: menulist;
+          appearance: menulist;
+        }
+        #particleShape option {
+          color: #120a0d;
+          background: #f5e7eb;
         }
         .panel[data-panel="particles"] input[type="range"]::-webkit-slider-thumb,
         .panel[data-panel="particles"] input[type="range"]::-moz-range-thumb,
@@ -1334,6 +1454,23 @@
           border-color: rgba(20, 184, 166, 0.7);
           background: rgba(20, 184, 166, 0.15);
         }
+        
+        /* Focus Navigator - smaller on mobile */
+        .focus-navigator {
+          width: 150px;
+          height: 150px;
+          right: 8px;
+          bottom: 70px;
+        }
+        .navigator-views {
+          padding: 4px 6px;
+          gap: 3px;
+        }
+        .nav-view-btn {
+          width: 22px;
+          height: 22px;
+          font-size: 10px;
+        }
       }
     </style>
   </head>
@@ -1424,9 +1561,8 @@
           <span>Particles</span>
         </div>
         <div class="panel-content">
-          <div class="control">
+          <div class="control control-shape">
             <label>Particle Shape</label>
-            <label for="particleShape">Shape</label>
             <select id="particleShape">
               <option value="circle">Circle (2D)</option>
               <option value="square">Square (2D)</option>
@@ -1435,21 +1571,24 @@
               <option value="icosahedron">Icosahedron (3D)</option>
             </select>
             <div id="softnessControl">
-              <label for="softness">Soft Particles <span id="softnessVal"></span></label>
-              <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
+              <label for="softness">Particle Softness <span id="softnessVal"></span></label>
+              <div class="slider-with-reset">
+                <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
+                <button id="softnessReset" type="button" class="reset-btn">ø</button>
+              </div>
             </div>
           </div>
           <div class="control">
             <label>Particle Size</label>
             <label for="particleSize">Size <span id="particleSizeVal"></span></label>
-            <input id="particleSize" type="range" min="1" max="500" step="1" data-default="1" />
+            <input id="particleSize" type="range" min="1" max="100" step="1" data-default="1" />
             <label for="sizeCurveCanvas">Size Curve</label>
             <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
           </div>
           <div class="control">
             <label>Particle Life</label>
             <label for="lifeSeconds">Life (sec) <span id="lifeSecondsVal"></span></label>
-            <input id="lifeSeconds" type="range" min="0.4" max="4" step="0.1" data-default="2.0" />
+            <input id="lifeSeconds" type="range" min="0.4" max="100" step="0.1" data-default="2.0" />
             <label for="lifeRandom">Life Random <span id="lifeRandomVal"></span></label>
             <input id="lifeRandom" type="range" min="0" max="1" step="0.05" data-default="0" />
           </div>
@@ -1835,44 +1974,39 @@
               </div>
             </div>
             <div class="control">
-              <label for="focusDepth">Focus Depth <span id="focusDepthVal"></span></label>
-              <input id="focusDepth" type="range" min="-6" max="6" step="0.1" data-default="0" />
-            </div>
-            <div class="control">
-              <label for="focusRange">Focus Range <span id="focusRangeVal"></span></label>
+              <label>Focus</label>
+              <label for="focusDepth">Depth <span id="focusDepthVal"></span></label>
+              <input id="focusDepth" type="range" min="0.1" max="20" step="0.1" data-default="6" />
+              <label for="focusRange">Range <span id="focusRangeVal"></span></label>
               <input id="focusRange" type="range" min="0.1" max="3" step="0.1" data-default="0.8" />
-            </div>
-            <div class="control">
               <label for="aperture">Aperture <span id="apertureVal"></span></label>
-              <input id="aperture" type="range" min="0" max="10" step="0.1" data-default="7" />
-            </div>
-            <div class="control select-control">
+              <input id="aperture" type="range" min="0" max="100" step="0.1" data-default="7" />
               <label for="dofMode">DOF Mode</label>
               <select id="dofMode">
                 <option value="bokeh">Bokeh</option>
                 <option value="physical">Physical Lens</option>
               </select>
-            </div>
-            <div class="control">
-              <label for="focusOverlay">Focus Overlay</label>
-              <button id="focusOverlay" class="pill-toggle" type="button" data-state="off">Off</button>
-            </div>
-            <div class="control">
-              <label for="bloomStrength">Bloom Strength <span id="bloomStrengthVal"></span></label>
-              <input id="bloomStrength" type="range" min="0" max="2" step="0.05" data-default="0.3" />
-            </div>
-            <div class="control">
-              <label for="bloomThreshold">Bloom Threshold <span id="bloomThresholdVal"></span></label>
-              <input id="bloomThreshold" type="range" min="0" max="1.5" step="0.05" data-default="0.8" />
-            </div>
-            <div class="control">
-              <label for="exposure">Exposure <span id="exposureVal"></span></label>
-              <input id="exposure" type="range" min="0.2" max="3" step="0.05" data-default="1.2" />
+              <div class="inline-toggle">
+                <label for="focusNavigator">Focus Navigator</label>
+                <button id="focusNavigator" class="pill-toggle" type="button" data-state="off">Off</button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Focus Navigator Window -->
+    <div id="focusNavigatorWindow" class="focus-navigator" style="display: none;">
+      <div class="navigator-views">
+        <button class="nav-view-btn active" data-view="top" title="Top View">T</button>
+        <button class="nav-view-btn" data-view="left" title="Left View">L</button>
+        <button class="nav-view-btn" data-view="right" title="Right View">R</button>
+        <button class="nav-view-btn" data-view="bottom" title="Bottom View">B</button>
+      </div>
+      <canvas id="navigatorCanvas" width="200" height="200"></canvas>
+    </div>
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>

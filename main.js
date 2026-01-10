@@ -32,6 +32,8 @@ let vortexGizmoEnabled = false;
 let attractorGizmoEnabled = false;
 let lightGizmoEnabled = false;
 let cameraGizmoEnabled = false;
+let focusNavigatorEnabled = false;
+let navigatorView = "top"; // "top", "left", "right", "bottom"
 let vortexPos = [0, 0, 0];
 let attractorPos = [0, 0, 0];
 let vortexRotX = 0;
@@ -63,16 +65,12 @@ let spinRateY = 1.2;
 let spinRateZ = 1.2;
 let spinRandom = 0.4;
 let particleSize = 1.0;
-let focusOffset = 0.0;
+let focusOffset = 6.0;
 let aperture = 7.0;
 let dofMode = 0;
 let focusRange = 0.8;
-let focusOverlay = 0;
 let dofEnabled = true;
 let cameraViewEnabled = false;
-let bloomStrength = 0.3;
-let bloomThreshold = 0.8;
-let exposure = 1.2;
 let lightIntensity = 1.2;
 let lightPos = [0, 1, 0.3];
 let lightColor = [0.55, 0.74, 1.0];
@@ -883,8 +881,17 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
   let base = input.color;
   let lit = base * uniforms.lightColorTime.xyz * (0.25 + diff * 0.9);
   let shaded = mix(base, lit, step(0.5, uniforms.motionBlurPad.y));
-  let uv = input.localPos.xy * 0.5 + 0.5;
-  let noise = textureSample(noiseTexture, noiseSampler, uv).r;
+  // Triplanar sampling to avoid seam lines on spheres with planar UVs.
+  let n = abs(normal);
+  let w = n / (n.x + n.y + n.z);
+  let scale = 0.75;
+  let uvX = input.localPos.zy * scale + vec2<f32>(0.5);
+  let uvY = input.localPos.xz * scale + vec2<f32>(0.5);
+  let uvZ = input.localPos.xy * scale + vec2<f32>(0.5);
+  let noiseX = textureSample(noiseTexture, noiseSampler, uvX).r;
+  let noiseY = textureSample(noiseTexture, noiseSampler, uvY).r;
+  let noiseZ = textureSample(noiseTexture, noiseSampler, uvZ).r;
+  let noise = noiseX * w.x + noiseY * w.y + noiseZ * w.z;
   let noiseMix = mix(1.0, noise, uniforms.shapeParams.z);
   let blendScale = uniforms.motionBlurPad.w;
   let alpha = input.opacity * blendScale;
@@ -943,7 +950,7 @@ const particlePipelineLayout = device.createPipelineLayout({
   bindGroupLayouts: [particleBindGroupLayout],
 });
 
-function createParticlePipeline(mode) {
+function createParticlePipeline(mode, depthWriteEnabled = false) {
   let blend;
   if (mode === "additive") {
     blend = {
@@ -1004,7 +1011,7 @@ function createParticlePipeline(mode) {
     primitive: { topology: "triangle-list", cullMode: "none" },
     depthStencil: {
       format: "depth24plus",
-      depthWriteEnabled: false,
+      depthWriteEnabled,
       depthCompare: "less",
     },
   });
@@ -1015,6 +1022,12 @@ const particlePipelines = {
   additive: createParticlePipeline("additive"),
   screen: createParticlePipeline("screen"),
   multiply: createParticlePipeline("multiply"),
+};
+const particlePipelinesDepth = {
+  alpha: createParticlePipeline("alpha", true),
+  additive: createParticlePipeline("additive", true),
+  screen: createParticlePipeline("screen", true),
+  multiply: createParticlePipeline("multiply", true),
 };
 
 const bindGroup = device.createBindGroup({
@@ -1458,7 +1471,7 @@ function drawDirectionArrow(origin, direction, length, color, lineWidth) {
 
   gizmoCtx.strokeStyle = color;
   gizmoCtx.lineWidth = lineWidth;
-  gizmoCtx.beginPath();
+    gizmoCtx.beginPath();
   gizmoCtx.moveTo(so[0], so[1]);
   gizmoCtx.lineTo(se[0], se[1]);
   gizmoCtx.stroke();
@@ -1468,8 +1481,8 @@ function drawDirectionArrow(origin, direction, length, color, lineWidth) {
   gizmoCtx.moveTo(se[0], se[1]);
   gizmoCtx.lineTo(hx1, hy1);
   gizmoCtx.lineTo(hx2, hy2);
-  gizmoCtx.closePath();
-  gizmoCtx.fill();
+    gizmoCtx.closePath();
+    gizmoCtx.fill();
 }
 
 function drawEmitterGizmo() {
@@ -1497,6 +1510,294 @@ function drawEmitterGizmo() {
     drawAxisHandles(cameraOrigin, 0, 0, 0, 0.6, lineWidth, "Camera");
     drawDirectionArrow(cameraOrigin, getCameraLensDir(), 0.9, "rgba(255, 190, 90, 0.95)", 1.4);
   }
+}
+
+// Focus Navigator rendering
+function drawFocusNavigator() {
+  if (!navigatorCtx || !navigatorCanvas) return;
+  
+  // Use the CSS dimensions (actual display size)
+  const rect = navigatorCanvas.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  navigatorCtx.clearRect(0, 0, navigatorCanvas.width, navigatorCanvas.height);
+  
+  // View bounds for orthographic projection
+  const viewSize = 12; // World units to show
+  const padding = 20;
+  const drawW = w - padding * 2;
+  const drawH = h - padding * 2;
+  const scale = Math.min(drawW, drawH) / viewSize;
+  const cx = w / 2;
+  const cy = h / 2;
+  
+  // Transform 3D point to 2D based on current view
+  function project(p) {
+    let x, y;
+    switch (navigatorView) {
+      case "top": // Looking down Y axis (sees X-Z plane)
+        x = p[0];
+        y = -p[2]; // Z goes up on screen
+        break;
+      case "bottom": // Looking up Y axis
+        x = p[0];
+        y = p[2];
+        break;
+      case "left": // Looking from -X axis (sees Z-Y plane)
+        x = -p[2];
+        y = -p[1];
+        break;
+      case "right": // Looking from +X axis
+        x = p[2];
+        y = -p[1];
+        break;
+      default:
+        x = p[0];
+        y = -p[2];
+    }
+    return [cx + x * scale, cy + y * scale];
+  }
+  
+  // Draw a line between two 3D points
+  function drawLine3D(p1, p2, color, lineWidth) {
+    const s1 = project(p1);
+    const s2 = project(p2);
+    navigatorCtx.strokeStyle = color;
+    navigatorCtx.lineWidth = lineWidth;
+    navigatorCtx.beginPath();
+    navigatorCtx.moveTo(s1[0], s1[1]);
+    navigatorCtx.lineTo(s2[0], s2[1]);
+    navigatorCtx.stroke();
+  }
+  
+  // Draw a rectangle outline in 3D (4 corners)
+  function drawRect3D(corners, color, lineWidth) {
+    navigatorCtx.strokeStyle = color;
+    navigatorCtx.lineWidth = lineWidth;
+    navigatorCtx.beginPath();
+    const s0 = project(corners[0]);
+    navigatorCtx.moveTo(s0[0], s0[1]);
+    for (let i = 1; i < corners.length; i++) {
+      const s = project(corners[i]);
+      navigatorCtx.lineTo(s[0], s[1]);
+    }
+    navigatorCtx.closePath();
+    navigatorCtx.stroke();
+  }
+  
+  // Colors
+  const cameraColor = "rgba(255, 190, 90, 0.9)";
+  const frustumColor = "rgba(255, 190, 90, 0.4)";
+  const focusPlaneColor = "rgba(20, 184, 166, 0.8)";
+  const emitterColor = "rgba(140, 210, 255, 0.9)";
+  const lineWidth = 1.5;
+  
+  // Camera position and direction
+  const camPos = [eye[0], eye[1], eye[2]];
+  const lensDir = getCameraLensDir();
+  
+  // Calculate focus distances
+  const focusDistance = Math.max(0.1, focusOffset);
+  const nearFocusD = Math.max(0.1, focusDistance - focusRange / 2);
+  const farFocusD = focusDistance + focusRange / 2;
+  
+  // Frustum half-angle (using aperture to scale the spread)
+  const frustumHalfAngle = Math.atan(1 / Math.max(0.5, aperture)) * 0.8;
+  const frustumSpread = Math.tan(frustumHalfAngle);
+  
+  // Camera body (simple box representation)
+  const camSize = 0.4;
+  const camUp = [0, 1, 0];
+  const camRight = normalizeVec3(cross(lensDir, camUp));
+  const camUpOrtho = normalizeVec3(cross(camRight, lensDir));
+  
+  // Camera corners (back face)
+  const camCorners = [
+    [camPos[0] - camRight[0] * camSize * 0.6 - camUpOrtho[0] * camSize * 0.4,
+     camPos[1] - camRight[1] * camSize * 0.6 - camUpOrtho[1] * camSize * 0.4,
+     camPos[2] - camRight[2] * camSize * 0.6 - camUpOrtho[2] * camSize * 0.4],
+    [camPos[0] + camRight[0] * camSize * 0.6 - camUpOrtho[0] * camSize * 0.4,
+     camPos[1] + camRight[1] * camSize * 0.6 - camUpOrtho[1] * camSize * 0.4,
+     camPos[2] + camRight[2] * camSize * 0.6 - camUpOrtho[2] * camSize * 0.4],
+    [camPos[0] + camRight[0] * camSize * 0.6 + camUpOrtho[0] * camSize * 0.4,
+     camPos[1] + camRight[1] * camSize * 0.6 + camUpOrtho[1] * camSize * 0.4,
+     camPos[2] + camRight[2] * camSize * 0.6 + camUpOrtho[2] * camSize * 0.4],
+    [camPos[0] - camRight[0] * camSize * 0.6 + camUpOrtho[0] * camSize * 0.4,
+     camPos[1] - camRight[1] * camSize * 0.6 + camUpOrtho[1] * camSize * 0.4,
+     camPos[2] - camRight[2] * camSize * 0.6 + camUpOrtho[2] * camSize * 0.4],
+  ];
+  
+  // Draw camera body
+  drawRect3D(camCorners, cameraColor, lineWidth);
+  
+  // Lens point (front of camera)
+  const lensPoint = [
+    camPos[0] + lensDir[0] * camSize * 0.8,
+    camPos[1] + lensDir[1] * camSize * 0.8,
+    camPos[2] + lensDir[2] * camSize * 0.8,
+  ];
+  
+  // Draw lines from camera corners to lens point
+  for (const corner of camCorners) {
+    drawLine3D(corner, lensPoint, cameraColor, lineWidth * 0.8);
+  }
+  
+  // Frustum corner offsets at distance d
+  function getFrustumCorners(d) {
+    const spread = d * frustumSpread;
+    const centerPoint = [
+      lensPoint[0] + lensDir[0] * d,
+      lensPoint[1] + lensDir[1] * d,
+      lensPoint[2] + lensDir[2] * d,
+    ];
+    return [
+      [centerPoint[0] - camRight[0] * spread - camUpOrtho[0] * spread,
+       centerPoint[1] - camRight[1] * spread - camUpOrtho[1] * spread,
+       centerPoint[2] - camRight[2] * spread - camUpOrtho[2] * spread],
+      [centerPoint[0] + camRight[0] * spread - camUpOrtho[0] * spread,
+       centerPoint[1] + camRight[1] * spread - camUpOrtho[1] * spread,
+       centerPoint[2] + camRight[2] * spread - camUpOrtho[2] * spread],
+      [centerPoint[0] + camRight[0] * spread + camUpOrtho[0] * spread,
+       centerPoint[1] + camRight[1] * spread + camUpOrtho[1] * spread,
+       centerPoint[2] + camRight[2] * spread + camUpOrtho[2] * spread],
+      [centerPoint[0] - camRight[0] * spread + camUpOrtho[0] * spread,
+       centerPoint[1] - camRight[1] * spread + camUpOrtho[1] * spread,
+       centerPoint[2] - camRight[2] * spread + camUpOrtho[2] * spread],
+    ];
+  }
+  
+  // Draw frustum lines from lens to far plane
+  const farCorners = getFrustumCorners(farFocusD);
+  for (const corner of farCorners) {
+    drawLine3D(lensPoint, corner, frustumColor, lineWidth * 0.7);
+  }
+  
+  // Draw near focus plane
+  const nearCorners = getFrustumCorners(nearFocusD);
+  drawRect3D(nearCorners, focusPlaneColor, lineWidth);
+  
+  // Draw far focus plane
+  drawRect3D(farCorners, focusPlaneColor, lineWidth);
+  
+  // Connect near and far planes
+  for (let i = 0; i < 4; i++) {
+    drawLine3D(nearCorners[i], farCorners[i], focusPlaneColor, lineWidth * 0.5);
+  }
+  
+  // Draw emitter wireframe
+  const emSize = emitterSize;
+  const emPos = emitterPos;
+  
+  // Simple emitter representation based on shape
+  if (emitterShape === "point") {
+    // Draw a small cross at the emitter position
+    const s = project(emPos);
+    navigatorCtx.strokeStyle = emitterColor;
+    navigatorCtx.lineWidth = lineWidth;
+    const crossSize = 6;
+    navigatorCtx.beginPath();
+    navigatorCtx.moveTo(s[0] - crossSize, s[1]);
+    navigatorCtx.lineTo(s[0] + crossSize, s[1]);
+    navigatorCtx.moveTo(s[0], s[1] - crossSize);
+    navigatorCtx.lineTo(s[0], s[1] + crossSize);
+    navigatorCtx.stroke();
+    // Draw a small circle
+    navigatorCtx.beginPath();
+    navigatorCtx.arc(s[0], s[1], 4, 0, Math.PI * 2);
+    navigatorCtx.stroke();
+  } else if (emitterShape === "sphere") {
+    // Draw a circle for the sphere
+    const s = project(emPos);
+    const radius = emSize * scale;
+    navigatorCtx.strokeStyle = emitterColor;
+    navigatorCtx.lineWidth = lineWidth;
+    navigatorCtx.beginPath();
+    navigatorCtx.arc(s[0], s[1], radius, 0, Math.PI * 2);
+    navigatorCtx.stroke();
+  } else if (emitterShape === "box") {
+    // Draw a box
+    const hs = emSize / 2;
+    const boxCorners = [
+      [emPos[0] - hs, emPos[1] - hs, emPos[2] - hs],
+      [emPos[0] + hs, emPos[1] - hs, emPos[2] - hs],
+      [emPos[0] + hs, emPos[1] + hs, emPos[2] - hs],
+      [emPos[0] - hs, emPos[1] + hs, emPos[2] - hs],
+    ];
+    drawRect3D(boxCorners, emitterColor, lineWidth);
+  } else if (emitterShape === "cone") {
+    // Draw a cone outline
+    const tipOffset = getConeEmitterTipOffset();
+    const tip = [emPos[0] + tipOffset[0], emPos[1] + tipOffset[1], emPos[2] + tipOffset[2]];
+    const baseRadius = emSize;
+    
+    // Draw base circle (simplified as a square in the current view)
+    const s = project(emPos);
+    const radius = baseRadius * scale;
+    navigatorCtx.strokeStyle = emitterColor;
+    navigatorCtx.lineWidth = lineWidth;
+    navigatorCtx.beginPath();
+    navigatorCtx.arc(s[0], s[1], radius, 0, Math.PI * 2);
+    navigatorCtx.stroke();
+    
+    // Draw line to tip
+    drawLine3D(emPos, tip, emitterColor, lineWidth);
+  } else {
+    // Default: draw a circle
+    const s = project(emPos);
+    const radius = Math.max(4, emSize * scale);
+    navigatorCtx.strokeStyle = emitterColor;
+    navigatorCtx.lineWidth = lineWidth;
+    navigatorCtx.beginPath();
+    navigatorCtx.arc(s[0], s[1], radius, 0, Math.PI * 2);
+    navigatorCtx.stroke();
+  }
+  
+  // Draw labels
+  navigatorCtx.font = "10px 'SF Mono', Menlo, monospace";
+  navigatorCtx.textAlign = "left";
+  navigatorCtx.textBaseline = "top";
+  
+  // Camera label
+  const camScreen = project(camPos);
+  navigatorCtx.fillStyle = cameraColor;
+  navigatorCtx.fillText("Camera", camScreen[0] + 8, camScreen[1] - 12);
+  
+  // Emitter label
+  const emScreen = project(emPos);
+  navigatorCtx.fillStyle = emitterColor;
+  navigatorCtx.fillText("Emitter", emScreen[0] + 8, emScreen[1] - 12);
+  
+  // Focus distance label
+  const focusCenter = [
+    lensPoint[0] + lensDir[0] * focusDistance,
+    lensPoint[1] + lensDir[1] * focusDistance,
+    lensPoint[2] + lensDir[2] * focusDistance,
+  ];
+  const focusScreen = project(focusCenter);
+  navigatorCtx.fillStyle = focusPlaneColor;
+  navigatorCtx.fillText(`Focus: ${focusDistance.toFixed(1)}`, focusScreen[0] + 8, focusScreen[1] - 4);
+}
+
+// Helper: cross product
+function cross(a, b) {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+// Helper: get cone emitter tip offset based on rotation
+function getConeEmitterTipOffset() {
+  const ax = (directionRotX * Math.PI) / 180;
+  const ay = (directionRotY * Math.PI) / 180;
+  const az = (directionRotZ * Math.PI) / 180;
+  let dir = [0, 1, 0]; // Default up direction
+  dir = rotateX(dir, ax);
+  dir = rotateY(dir, ay);
+  dir = rotateZ(dir, az);
+  const tipLen = emitterSize * 2;
+  return [dir[0] * tipLen, dir[1] * tipLen, dir[2] * tipLen];
 }
 
 function getPointerPosition(event) {
@@ -2653,6 +2954,49 @@ if (cameraViewToggle) {
   });
 }
 
+// Focus Navigator toggle and view buttons
+const focusNavigatorToggle = document.getElementById("focusNavigator");
+const focusNavigatorWindow = document.getElementById("focusNavigatorWindow");
+const navigatorCanvas = document.getElementById("navigatorCanvas");
+const navigatorCtx = navigatorCanvas ? navigatorCanvas.getContext("2d") : null;
+
+function resizeNavigatorCanvas() {
+  if (!navigatorCanvas || !focusNavigatorWindow) return;
+  // Get the actual rendered size of the canvas container
+  const rect = navigatorCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  navigatorCanvas.width = rect.width * dpr;
+  navigatorCanvas.height = rect.height * dpr;
+  navigatorCtx.scale(dpr, dpr);
+}
+
+if (focusNavigatorToggle && focusNavigatorWindow) {
+  setToggleState(focusNavigatorToggle, focusNavigatorEnabled);
+  focusNavigatorToggle.addEventListener("click", () => {
+    focusNavigatorEnabled = !focusNavigatorEnabled;
+    setToggleState(focusNavigatorToggle, focusNavigatorEnabled);
+    focusNavigatorWindow.style.display = focusNavigatorEnabled ? "flex" : "none";
+    if (focusNavigatorEnabled) {
+      requestAnimationFrame(() => {
+        resizeNavigatorCanvas();
+        drawFocusNavigator();
+      });
+    }
+  });
+}
+
+// Navigator view buttons
+document.querySelectorAll(".nav-view-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".nav-view-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    navigatorView = btn.dataset.view;
+    if (focusNavigatorEnabled) {
+      drawFocusNavigator();
+    }
+  });
+});
+
 const groundToggle = document.getElementById("groundEnabled");
 const groundControls = document.getElementById("groundControls");
 groundControls.style.display = groundEnabled ? "" : "none";
@@ -2713,7 +3057,7 @@ bindRange("spinRandom", "spinRandomVal", () => spinRandom, (v) => {
   return spinRandom;
 });
 bindRange("particleSize", "particleSizeVal", () => particleSize, (v) => {
-  particleSize = Math.max(1, Math.min(500, v));
+  particleSize = Math.max(1, Math.min(100, v));
   return particleSize;
 });
 bindRange("emitterSize", "emitterSizeVal", () => emitterSize, (v) => {
@@ -2757,7 +3101,7 @@ bindRange("cameraPosZ", "cameraPosZVal", () => eye[2], (v) => {
   return eye[2];
 });
 bindRange("focusDepth", "focusDepthVal", () => focusOffset, (v) => {
-  focusOffset = v;
+  focusOffset = Math.max(0.1, v);
   return focusOffset;
 });
 bindRange("aperture", "apertureVal", () => aperture, (v) => {
@@ -2768,22 +3112,18 @@ bindRange("focusRange", "focusRangeVal", () => focusRange, (v) => {
   focusRange = Math.max(0.1, v);
   return focusRange;
 });
-bindRange("bloomStrength", "bloomStrengthVal", () => bloomStrength, (v) => {
-  bloomStrength = Math.max(0, v);
-  return bloomStrength;
-});
-bindRange("bloomThreshold", "bloomThresholdVal", () => bloomThreshold, (v) => {
-  bloomThreshold = Math.max(0, Math.min(1.5, v));
-  return bloomThreshold;
-});
-bindRange("exposure", "exposureVal", () => exposure, (v) => {
-  exposure = Math.max(0.1, v);
-  return exposure;
-});
 bindRange("softness", "softnessVal", () => softness, (v) => {
   softness = Math.max(0, Math.min(1, v));
   return softness;
 });
+const softnessInput = document.getElementById("softness");
+const softnessReset = document.getElementById("softnessReset");
+if (softnessReset && softnessInput) {
+  softnessReset.addEventListener("click", () => {
+    softnessInput.value = softnessInput.dataset.default;
+    softnessInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 bindRange("particleOpacity", "particleOpacityVal", () => particleOpacity, (v) => {
   particleOpacity = Math.max(0, Math.min(1, v));
   return particleOpacity;
@@ -2837,14 +3177,6 @@ shadingToggle.addEventListener("click", () => {
   }
 });
 
-const focusOverlayToggle = document.getElementById("focusOverlay");
-if (focusOverlayToggle) {
-  setToggleState(focusOverlayToggle, focusOverlay > 0.5);
-  focusOverlayToggle.addEventListener("click", () => {
-    focusOverlay = focusOverlay > 0.5 ? 0 : 1;
-    setToggleState(focusOverlayToggle, focusOverlay > 0.5);
-  });
-}
 
 const emitterShapeSelect = document.getElementById("emitterShape");
 const emitterShapeControls = document.getElementById("emitterShapeControls");
@@ -3155,7 +3487,7 @@ if (vortexRotZReset) {
 if (cameraRotXReset) {
   cameraRotXReset.addEventListener("click", () => {
     cameraRotX = 0;
-    updateDirectionUI();
+updateDirectionUI();
   });
 }
 if (cameraRotYReset) {
@@ -3374,7 +3706,7 @@ function setupSettingCollapsibles() {
       textSpan.textContent = "+";
       indicator.appendChild(textSpan);
       const leftWrap = label.querySelector(".label-left") || label;
-      leftWrap.appendChild(indicator);
+        leftWrap.appendChild(indicator);
     }
 
     const indicator = label.querySelector(".collapse-indicator");
@@ -3598,9 +3930,9 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
       }
       
       // Resize editors when panel opens
-      sizeCurveEditor.resize();
-      opacityCurveEditor.resize();
-      gradientEditor.resize();
+    sizeCurveEditor.resize();
+    opacityCurveEditor.resize();
+    gradientEditor.resize();
     }
   };
   
@@ -3630,6 +3962,10 @@ window.addEventListener("resize", () => {
   opacityCurveEditor.resize();
   gradientEditor.resize();
   updateDirectionUI();
+  if (focusNavigatorEnabled) {
+    resizeNavigatorCanvas();
+    drawFocusNavigator();
+  }
 });
 
 function getEmissionDirection() {
@@ -4030,8 +4366,10 @@ function frame() {
 
   updateCamera(now * 0.001);
   drawEmitterGizmo();
-  const baseFocus = Math.hypot(activeViewEye[0], activeViewEye[1], activeViewEye[2]);
-  const focusDistance = Math.max(0.1, baseFocus - focusOffset);
+  if (focusNavigatorEnabled) {
+    drawFocusNavigator();
+  }
+  const focusDistance = Math.max(0.1, focusOffset);
   const cameraViewActive = cameraViewEnabled && dofEnabled;
   if (cameraViewActive) {
     dofData[0] = canvas.width;
@@ -4042,10 +4380,10 @@ function frame() {
     dofData[5] = 0.1;
     dofData[6] = 50.0;
     dofData[7] = dofMode;
-    dofData[8] = focusOverlay;
-    dofData[9] = bloomStrength;
-    dofData[10] = bloomThreshold;
-    dofData[11] = exposure;
+    dofData[8] = 0;
+    dofData[9] = 0;
+    dofData[10] = 0;
+    dofData[11] = 0;
     dofData[12] = 0;
     dofData[13] = 0;
     dofData[14] = 0;
@@ -4073,7 +4411,8 @@ function frame() {
       depthStoreOp: "store",
     },
   });
-  const activePipeline = particlePipelines[blendMode] || particlePipelines.alpha;
+  const pipelineSet = cameraViewActive ? particlePipelinesDepth : particlePipelines;
+  const activePipeline = pipelineSet[blendMode] || pipelineSet.alpha;
   particlePass.setPipeline(activePipeline);
   particlePass.setBindGroup(0, bindGroup);
   particlePass.setVertexBuffer(0, currentMesh.buffer);
