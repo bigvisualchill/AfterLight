@@ -226,7 +226,7 @@
       }
       .settings-panel-container .panel {
         display: none;
-        width: 320px;
+        width: 340px;
       }
       .settings-panel-container .panel.active {
         display: block;
@@ -354,17 +354,20 @@
         gap: 7px;
         margin-top: 6px;
       }
-      .slider-with-reset {
-        display: grid;
-        grid-template-columns: 1fr 24px;
+      .slider-with-reset,
+      .slider-row {
+        display: flex;
         align-items: center;
         gap: 8px;
       }
-      .slider-with-reset input[type="range"] {
-        width: 100%;
+      .slider-with-reset input[type="range"],
+      .slider-row input[type="range"] {
+        flex: 1;
+        min-width: 0;
       }
-      .slider-with-reset .reset-btn {
-        justify-self: end;
+      .slider-with-reset .reset-btn,
+      .slider-row .reset-btn {
+        flex-shrink: 0;
       }
       .control.control-shape .control-body,
       .control.control-shape .control-body.range-body {
@@ -374,16 +377,23 @@
         gap: 8px;
       }
       .control.control-shape #softnessControl {
-        margin-top: 8px;
+        margin-top: 0;
       }
       .inline-toggle {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        flex-wrap: wrap;
+      }
+      .inline-toggle label {
+        flex: 1;
+        min-width: 0;
+        white-space: normal;
       }
       .inline-toggle .pill-toggle {
         margin-left: auto;
+        min-width: 54px;
       }
       .select-control {
         margin-bottom: 0;
@@ -391,6 +401,12 @@
       .control-stack {
         display: grid;
         gap: 12px;
+      }
+      #turbulenceControls,
+      #curlControls {
+        display: grid;
+        gap: 7px;
+        width: 100%;
       }
       /* Main toggle control-stacks (Forces, Shading, Camera) - transparent container */
       #forcesControls,
@@ -457,20 +473,14 @@
       .setting.expanded .collapse-indicator {
         /* Text changes handled by JS */
       }
-      .setting       .control-body {
+      .setting .control-body {
         display: none;
         gap: 7px;
       }
       .setting.expanded .control-body {
-        display: grid;
-      }
-      .setting.expanded .control-body.range-body {
-        grid-template-columns: 1fr 28px;
-        align-items: center;
-      }
-      .setting.expanded .control-body.range-body input[type="range"] {
-        grid-column: 1 / -1;
-        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
       }
       .setting.expanded .control.control-shape .control-body.range-body {
         display: flex;
@@ -485,17 +495,29 @@
         grid-column: 1 / -1;
         width: 100%;
       }
-      .value-row {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        grid-column: 1 / -1;
+      /* Value display in label - right aligned */
+      .setting > label span[id$="Val"] {
+        margin-left: auto;
+        font-weight: 600;
+        opacity: 0.9;
       }
-      .value-row .editable-value {
-        margin-left: 0;
+      .setting:not(.expanded) > label span[id$="Val"] {
+        display: none;
       }
-      .value-row .reset-btn {
-        margin-left: 0;
+      .control-shape.setting:not(.expanded) select,
+      .control-shape.setting:not(.expanded) #softnessControl,
+      .control-shape.setting:not(.expanded) #sphereDetailControl {
+        display: none;
+      }
+      .control-shape.setting:not(.expanded) {
+        gap: 0;
+      }
+      .control-shape.setting:not(.expanded) .control-body {
+        display: none;
+        height: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
       }
       .editable-value {
         display: inline-flex;
@@ -1162,17 +1184,6 @@
           gap: 20px;
           white-space: nowrap;
         }
-        /* Hide value when collapsed */
-        .setting .value-row {
-          display: none;
-        }
-        .setting.expanded .value-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          justify-content: flex-start;
-          margin-top: 12px;
-        }
         .setting .control-body {
           display: none;
           flex-direction: column;
@@ -1183,15 +1194,15 @@
         .setting.expanded .control-body {
           display: flex;
         }
-        .setting.expanded .control-body.range-body {
-          display: flex;
-          flex-direction: column;
+        /* Slider rows on mobile - more gap */
+        .slider-with-reset,
+        .slider-row {
+          gap: 10px;
         }
-        .value-row .editable-value {
-          min-width: 60px;
-        }
-        .value-row .reset-btn {
-          margin-left: 0;
+        /* Value in label stays visible */
+        .setting > label span[id$="Val"] {
+          margin-left: auto;
+          font-weight: 600;
         }
         /* Mini-panel colors per category */
         .panel[data-panel="particles"] .setting {
@@ -1676,13 +1687,6 @@
         </div>
         <div class="panel-content">
           <div class="control select-control">
-            <label for="emitMode">Emission Mode</label>
-            <select id="emitMode">
-              <option value="hold">On Click (Hold)</option>
-              <option value="auto">Continuous</option>
-            </select>
-          </div>
-          <div class="control select-control">
             <label for="emitterShape">Emitter Shape</label>
             <select id="emitterShape">
               <option value="point">Point</option>
@@ -1706,17 +1710,19 @@
             </div>
           </div>
           <div class="control">
-            <label>Emitter Position</label>
-            <label for="emitterPosX">X <span id="emitterPosXVal"></span></label>
-            <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <label for="emitterPosY">Y <span id="emitterPosYVal"></span></label>
-            <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
-            <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <div class="inline-toggle">
-              <label for="emitterGizmo">Show Emitter Gizmo</label>
-              <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-            </div>
+            <label for="emissionDirection">Emission Direction</label>
+            <select id="emissionDirection">
+              <option value="directional">Directional</option>
+              <option value="outwards">Outwards</option>
+              <option value="bidirectional">Bi-directional</option>
+            </select>
+          </div>
+          <div class="control">
+            <label>Particle Velocity</label>
+            <label for="initialSpeed">Velocity <span id="initialSpeedVal"></span></label>
+            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
+            <label for="speedRandom">Velocity Random <span id="speedRandomVal"></span></label>
+            <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
           </div>
           <div class="control rotation-group">
             <label>Emitter Rotation</label>
@@ -1756,11 +1762,17 @@
             <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
           </div>
           <div class="control">
-            <label>Particle Speed</label>
-            <label for="initialSpeed">Initial Speed <span id="initialSpeedVal"></span></label>
-            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
-            <label for="speedRandom">Speed Random <span id="speedRandomVal"></span></label>
-            <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
+            <label>Emitter Position</label>
+            <label for="emitterPosX">X <span id="emitterPosXVal"></span></label>
+            <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <label for="emitterPosY">Y <span id="emitterPosYVal"></span></label>
+            <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
+            <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <div class="inline-toggle">
+              <label for="emitterGizmo">Show Emitter Gizmo</label>
+              <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
           </div>
           <div class="control">
             <label>Particle Spin</label>
@@ -2025,11 +2037,6 @@
               <input id="focusRange" type="range" min="0.1" max="3" step="0.1" data-default="0.8" />
               <label for="aperture">Aperture <span id="apertureVal"></span></label>
               <input id="aperture" type="range" min="0" max="100" step="0.1" data-default="7" />
-              <label for="dofMode">DOF Mode</label>
-              <select id="dofMode">
-                <option value="bokeh">Bokeh</option>
-                <option value="physical">Physical Lens</option>
-              </select>
               <div class="inline-toggle">
                 <label for="focusNavigator">Focus Navigator</label>
                 <button id="focusNavigator" class="pill-toggle" type="button" data-state="off">Off</button>

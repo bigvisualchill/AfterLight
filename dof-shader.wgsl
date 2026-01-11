@@ -14,7 +14,6 @@ struct Uniforms {
   maxBlur: f32,
   near: f32,
   far: f32,
-  mode: f32,
   _pad: vec4<f32>,
 };
 
@@ -29,10 +28,9 @@ fn linearizeDepth(depth: f32, near: f32, far: f32) -> f32 {
 
 fn getCoC(linearDepth: f32) -> f32 {
   let coc = abs(linearDepth - uniforms.focusDistance);
-  let blurBokeh = smoothstep(0.0, uniforms.focusRange, coc);
   var blurPhysical = smoothstep(0.0, uniforms.focusRange, coc);
   blurPhysical = blurPhysical * blurPhysical;
-  return mix(blurBokeh, blurPhysical, step(0.5, uniforms.mode));
+  return blurPhysical;
 }
 
 @vertex

@@ -73,10 +73,10 @@ let lifeSeconds = 2.0;
 let lifeRandom = 0.0;
 let emitterSize = 0.2;
 let emitterShape = "point";
-let emitMode = "auto";
 let particleShape = "circle";
 let sphereSubdivisions = 2;
 let emitFrom = "volume";
+let emissionDirection = "directional";
 let coneAngle = 16;
 let directionRotX = 0;
 let directionRotY = 0;
@@ -94,7 +94,6 @@ let spinRandom = 0.4;
 let particleSize = 1.0;
 let focusOffset = 6.0;
 let aperture = 7.0;
-let dofMode = 0;
 let focusRange = 0.8;
 let dofEnabled = true;
 let cameraViewEnabled = false;
@@ -361,6 +360,16 @@ function randomInSphere(radius, onSurface) {
   v = [v[0] / len, v[1] / len, v[2] / len];
   const scale = onSurface ? radius : radius * Math.cbrt(Math.random());
   return [v[0] * scale, v[1] * scale, v[2] * scale];
+}
+
+function randomSphereDirection() {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  return [
+    Math.sin(phi) * Math.cos(theta),
+    Math.sin(phi) * Math.sin(theta),
+    Math.cos(phi)
+  ];
 }
 
 function randomOnBox(half) {
@@ -3326,12 +3335,6 @@ bindRange("lightPosZ", "lightPosZVal", () => lightPos[2], (v) => {
   return lightPos[2];
 });
 
-const dofModeSelect = document.getElementById("dofMode");
-dofModeSelect.value = "bokeh";
-dofModeSelect.addEventListener("change", () => {
-  dofMode = dofModeSelect.value === "physical" ? 1 : 0;
-});
-
 const dofControls = document.getElementById("dofControls");
 setControlVisibility(dofControls, true);
 
@@ -3374,10 +3377,10 @@ emitFromSelect.addEventListener("change", () => {
   emitFrom = emitFromSelect.value;
 });
 
-const emitModeSelect = document.getElementById("emitMode");
-emitModeSelect.value = emitMode;
-emitModeSelect.addEventListener("change", () => {
-  emitMode = emitModeSelect.value;
+const emissionDirectionSelect = document.getElementById("emissionDirection");
+emissionDirectionSelect.value = emissionDirection;
+emissionDirectionSelect.addEventListener("change", () => {
+  emissionDirection = emissionDirectionSelect.value;
 });
 
 const particleShapeSelect = document.getElementById("particleShape");
@@ -3387,7 +3390,7 @@ const spin2dControls = document.getElementById("spin2dControls");
 const spin3dControls = document.getElementById("spin3dControls");
 const is2DShape = () => particleShape === "circle" || particleShape === "square";
 if (softnessControl) {
-  softnessControl.style.display = is2DShape() ? "" : "none";
+softnessControl.style.display = is2DShape() ? "" : "none";
 }
 if (sphereDetailControl) {
   sphereDetailControl.style.display = particleShape === "sphere" ? "" : "none";
@@ -3399,7 +3402,7 @@ particleShapeSelect.addEventListener("change", () => {
   particleShape = particleShapeSelect.value;
   currentMesh = meshBuffers[particleShape] || meshBuffers.cube;
   if (softnessControl) {
-    softnessControl.style.display = is2DShape() ? "" : "none";
+  softnessControl.style.display = is2DShape() ? "" : "none";
   }
   if (sphereDetailControl) {
     sphereDetailControl.style.display = particleShape === "sphere" ? "" : "none";
@@ -3797,10 +3800,13 @@ solidColorInput.addEventListener("input", () => {
 });
 
 function attachSliderResets() {
-  document.querySelectorAll(".control").forEach((control) => {
-    const input = control.querySelector('input[type="range"]');
-    if (!input || !input.dataset.default) return;
-    if (control.querySelector(".reset-btn")) return;
+  // Add a reset button after each range input that has a data-default
+  document.querySelectorAll('input[type="range"][data-default]').forEach((input) => {
+    // Skip if already has a reset button right after it
+    if (input.nextElementSibling && input.nextElementSibling.classList.contains("reset-btn")) return;
+    // Skip if inside a slider-with-reset (already has manual reset)
+    if (input.closest(".slider-with-reset")) return;
+    
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "reset-btn";
@@ -3809,7 +3815,8 @@ function attachSliderResets() {
       input.value = input.dataset.default;
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    control.appendChild(btn);
+    // Insert reset button right after the input
+    input.parentNode.insertBefore(btn, input.nextSibling);
   });
 }
 attachSliderResets();
@@ -3844,42 +3851,57 @@ function setupSettingCollapsibles() {
       body.appendChild(node);
     });
     control.appendChild(body);
-    if (body.querySelector('input[type="range"]')) {
-      body.classList.add("range-body");
-    }
-
-    // Find value element in label (span with id ending in "Val" or .editable-value)
-    const valueEl = label.querySelector("span[id$='Val']") || label.querySelector(".editable-value");
     
-    // Move value element to control-body if it exists
-    if (valueEl && valueEl.parentNode === label) {
-      // Create a value-row to hold value and reset button
-      const valueRow = document.createElement("div");
-      valueRow.className = "value-row";
-      valueRow.appendChild(valueEl);
+    // Wrap each range input + reset button in a slider-row
+    const rangeInputs = body.querySelectorAll('input[type="range"]');
+    rangeInputs.forEach((input) => {
+      // Skip if already wrapped or inside a slider-with-reset
+      if (input.closest('.slider-row') || input.closest('.slider-with-reset')) return;
       
-      // Move reset button next to value if it exists in body
-      const resetBtn = body.querySelector(".reset-btn");
-      if (resetBtn) {
-        valueRow.appendChild(resetBtn);
+      const sliderRow = document.createElement("div");
+      sliderRow.className = "slider-row";
+      
+      // Find or create reset button
+      let resetBtn = input.nextElementSibling;
+      const hasExistingBtn = resetBtn && resetBtn.classList.contains("reset-btn");
+      
+      // Insert slider-row before the input
+      input.parentNode.insertBefore(sliderRow, input);
+      sliderRow.appendChild(input);
+      
+      // Move existing reset button or create new one
+      if (hasExistingBtn) {
+        sliderRow.appendChild(resetBtn);
+      } else if (input.dataset.default) {
+        // Create reset button for this slider
+        const newBtn = document.createElement("button");
+        newBtn.type = "button";
+        newBtn.className = "reset-btn";
+        newBtn.textContent = "ø";
+        newBtn.addEventListener("click", () => {
+          input.value = input.dataset.default;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        sliderRow.appendChild(newBtn);
       }
-      
-      // Add value row to body (after the input)
-      body.appendChild(valueRow);
-    }
+    });
 
-    // Create label-left wrapper for remaining label content
+    // Create label-left wrapper for label text (keep value span outside for right alignment)
     if (!label.querySelector(".label-left")) {
       const leftWrap = document.createElement("span");
       leftWrap.className = "label-left";
       const labelNodes = Array.from(label.childNodes);
+      const valueSpan = label.querySelector("span[id$='Val']");
       labelNodes.forEach((node) => {
+        // Skip value spans, direction values, reset buttons, editable values
+        if (node === valueSpan) return;
         if (
           node.nodeType === 1 &&
           (node.classList.contains("direction-values") ||
             node.classList.contains("reset-btn") ||
             node.classList.contains("direction-reset") ||
-            node.classList.contains("editable-value"))
+            node.classList.contains("editable-value") ||
+            (node.id && node.id.endsWith("Val")))
         ) {
           return;
         }
@@ -4215,7 +4237,25 @@ function spawnAt(x, y, count = 1, timeOffset = 0) {
       y + emitterPos[1] + offset[1],
       emitterPos[2] + offset[2],
     ];
-    const baseDir = getEmissionDirection();
+    let baseDir;
+    if (emissionDirection === "outwards") {
+      // Radial direction from emitter center
+      if (offset[0] === 0 && offset[1] === 0 && offset[2] === 0) {
+        // Point emitter - use random direction
+        baseDir = randomSphereDirection();
+      } else {
+        baseDir = normalizeVec3(offset);
+      }
+    } else if (emissionDirection === "bidirectional") {
+      // Randomly choose forward or backward
+      baseDir = getEmissionDirection();
+      if (Math.random() < 0.5) {
+        baseDir = [-baseDir[0], -baseDir[1], -baseDir[2]];
+      }
+    } else {
+      // Directional (default) - current behavior
+      baseDir = getEmissionDirection();
+    }
     const dir = randomConeDirection(baseDir, coneAngle);
     const speed = Math.max(0, initialSpeed * (1 + rand(-speedRandom, speedRandom)));
     const vel = [dir[0] * speed, dir[1] * speed, dir[2] * speed];
@@ -4292,9 +4332,7 @@ function screenToWorldHit(event) {
   return [near[0] + dir[0] * t, near[1] + dir[1] * t];
 }
 
-let isSpawning = false;
 let spawnAccum = 0;
-let lastHit = [0, 0];
 let gizmoDragging = false;
 let gizmoDragAxis = null;
 let gizmoDragDir = [0, 0];
@@ -4322,10 +4360,7 @@ pointerTarget.addEventListener("pointerdown", (event) => {
     }
     return;
   }
-  if (emitMode === "auto") return;
-  lastHit = screenToWorldHit(event);
-  spawnAt(lastHit[0], lastHit[1]);
-  isSpawning = true;
+  return;
 });
 pointerTarget.addEventListener("pointermove", (event) => {
   if (gizmoDragging) {
@@ -4334,11 +4369,9 @@ pointerTarget.addEventListener("pointermove", (event) => {
   }
   // Update hover state for cursor feedback
   updateGizmoHover(event);
-  if (!isSpawning) return;
-  lastHit = screenToWorldHit(event);
+  return;
 });
 pointerTarget.addEventListener("pointerup", (event) => {
-  isSpawning = false;
   if (gizmoDragging) {
     gizmoDragging = false;
     gizmoDragAxis = null;
@@ -4354,7 +4387,6 @@ pointerTarget.addEventListener("pointerup", (event) => {
   }
 });
 pointerTarget.addEventListener("pointerleave", (event) => {
-  isSpawning = false;
   gizmoHoverAxis = null;
   gizmoHoverTarget = null;
   if (gizmoCanvas) gizmoCanvas.style.cursor = "";
@@ -4370,7 +4402,6 @@ pointerTarget.addEventListener("pointerleave", (event) => {
   }
 });
 pointerTarget.addEventListener("pointercancel", (event) => {
-  isSpawning = false;
   gizmoHoverAxis = null;
   gizmoHoverTarget = null;
   if (gizmoCanvas) gizmoCanvas.style.cursor = "";
@@ -4501,27 +4532,14 @@ function frame() {
 
   }
 
-  if (emitMode === "auto") {
-    const lambda = emissionRate * dt;
-    spawnAccum += lambda;
-    const spawnNow = Math.floor(spawnAccum);
-    if (spawnNow > 0) {
-      spawnAccum -= spawnNow;
-      for (let i = 0; i < spawnNow; i += 1) {
-        const offset = ((i + 0.5) / spawnNow) * dt;
-        spawnAt(0, 0, 1, offset);
-      }
-    }
-  } else if (isSpawning) {
-    const lambda = emissionRate * dt;
-    spawnAccum += lambda;
-    const spawnNow = Math.floor(spawnAccum);
-    if (spawnNow > 0) {
-      spawnAccum -= spawnNow;
-      for (let i = 0; i < spawnNow; i += 1) {
-        const offset = ((i + 0.5) / spawnNow) * dt;
-        spawnAt(lastHit[0], lastHit[1], 1, offset);
-      }
+  const lambda = emissionRate * dt;
+  spawnAccum += lambda;
+  const spawnNow = Math.floor(spawnAccum);
+  if (spawnNow > 0) {
+    spawnAccum -= spawnNow;
+    for (let i = 0; i < spawnNow; i += 1) {
+      const offset = ((i + 0.5) / spawnNow) * dt;
+      spawnAt(0, 0, 1, offset);
     }
   }
 
@@ -4600,7 +4618,7 @@ function frame() {
     dofData[4] = aperture;
     dofData[5] = 0.1;
     dofData[6] = 50.0;
-    dofData[7] = dofMode;
+    dofData[7] = 0;
     dofData[8] = 0;
     dofData[9] = 0;
     dofData[10] = 0;
