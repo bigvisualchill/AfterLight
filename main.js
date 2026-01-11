@@ -1073,6 +1073,15 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
 `;
 
 const particleModule = device.createShaderModule({ code: shader });
+particleModule.getCompilationInfo().then((info) => {
+  if (info.messages.length) {
+    console.group("Particle shader compile messages");
+    for (const msg of info.messages) {
+      console.log(msg.type, msg.lineNum, msg.linePos, msg.message);
+    }
+    console.groupEnd();
+  }
+});
 const particleBindGroupLayout = device.createBindGroupLayout({
   entries: [
     { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} },
@@ -1187,6 +1196,15 @@ const bindGroup = device.createBindGroup({
 
 const dofShaderCode = await (await fetch("./dof-shader.wgsl")).text();
 const dofModule = device.createShaderModule({ code: dofShaderCode });
+dofModule.getCompilationInfo().then((info) => {
+  if (info.messages.length) {
+    console.group("DOF shader compile messages");
+    for (const msg of info.messages) {
+      console.log(msg.type, msg.lineNum, msg.linePos, msg.message);
+    }
+    console.groupEnd();
+  }
+});
 const dofSampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 const dofUniformBuffer = device.createBuffer({
   size: 64,
@@ -4369,10 +4387,19 @@ pointerTarget.addEventListener("pointercancel", (event) => {
 });
 
 let lastTime = performance.now();
+let smoothedDt = 1 / 60;
+const DT_SMOOTH = 0.12;
 function frame() {
   const now = performance.now();
-  const dt = Math.min(0.033, (now - lastTime) / 1000);
+  const rawDt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
+  const cameraViewActive = cameraViewEnabled && dofEnabled;
+  if (cameraViewActive) {
+    smoothedDt = smoothedDt * (1 - DT_SMOOTH) + rawDt * DT_SMOOTH;
+  } else {
+    smoothedDt = rawDt;
+  }
+  const dt = cameraViewActive ? smoothedDt : rawDt;
   const frameMs = now - perfLastFrame;
   perfLastFrame = now;
   perfAccum += frameMs;
@@ -4565,7 +4592,6 @@ function frame() {
     drawFocusNavigator();
   }
   const focusDistance = Math.max(0.1, focusOffset);
-  const cameraViewActive = cameraViewEnabled && dofEnabled;
   if (cameraViewActive) {
     dofData[0] = canvas.width;
     dofData[1] = canvas.height;
