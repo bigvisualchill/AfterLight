@@ -4,7 +4,10 @@ const gizmoCtx = gizmoCanvas ? gizmoCanvas.getContext("2d") : null;
 const perfHud = document.getElementById("perfHud");
 const perfFps = document.getElementById("perfFps");
 const perfCpu = document.getElementById("perfCpu");
+const perfCpuBar = document.getElementById("perfCpuBar");
 const perfGpu = document.getElementById("perfGpu");
+const perfGpuBar = document.getElementById("perfGpuBar");
+const perfParticles = document.getElementById("perfParticles");
 let perfLastFrame = performance.now();
 let perfAccum = 0;
 let perfCount = 0;
@@ -12,19 +15,80 @@ let perfLastUpdate = performance.now();
 let perfGpuMs = 0;
 let perfGpuInFlight = false;
 let perfLastGpuSample = 0;
-const PERF_UPDATE_MS = 250;
+let perfWorstFrame = 0; // Track worst frame time in current period
+let perfFrameStart = performance.now(); // Start of current measurement period
+const PERF_UPDATE_MS = 500; // Update every 500ms for more stable readings
 const PERF_GPU_SAMPLE_MS = 600;
+
+function getPerfBarColor(ms) {
+  // Based on FPS targets:
+  // Green: 60+ FPS (≤16.67ms) - Excellent
+  // Yellow: 30-60 FPS (16.67-33.33ms) - Acceptable
+  // Red: <30 FPS (>33.33ms) - Poor
+  const ms60fps = 16.67;
+  const ms30fps = 33.33;
+  
+  if (ms <= ms60fps) {
+    // Green zone - 60+ FPS, excellent
+    return "rgb(80, 200, 80)";
+  } else if (ms <= ms30fps) {
+    // Yellow zone - 30-60 FPS, acceptable
+    const t = (ms - ms60fps) / (ms30fps - ms60fps);
+    const r = Math.round(80 + t * 175);
+    const g = Math.round(200 - t * 40);
+    return `rgb(${r}, ${g}, 60)`;
+  } else {
+    // Red zone - below 30 FPS, poor
+    const t = Math.min(1, (ms - ms30fps) / 20);
+    const g = Math.round(160 - t * 120);
+    return `rgb(255, ${g}, ${Math.round(60 - t * 40)})`;
+  }
+}
 
 function updatePerfHud(now) {
   if (!perfHud || !perfFps || !perfCpu || !perfGpu) return;
   if (now - perfLastUpdate < PERF_UPDATE_MS) return;
-  const avg = perfAccum / Math.max(1, perfCount);
-  const fps = avg > 0 ? 1000 / avg : 0;
-  perfFps.textContent = fps.toFixed(0);
-  perfCpu.textContent = avg.toFixed(1);
-  perfGpu.textContent = perfGpuMs > 0 ? perfGpuMs.toFixed(1) : "--";
+  
+  // Calculate actual FPS from frame count and elapsed time
+  const elapsed = now - perfFrameStart;
+  const fps = elapsed > 0 ? (perfCount / elapsed) * 1000 : 0;
+  
+  // Show FPS with dropped frame indicator
+  const expectedFrames = elapsed / 16.67; // Expected frames at 60fps
+  const droppedFrames = Math.max(0, Math.round(expectedFrames - perfCount));
+  
+  if (droppedFrames > 0 && fps < 58) {
+    perfFps.textContent = fps.toFixed(0) + ` (−${droppedFrames})`;
+    perfFps.style.color = "#ff6b6b";
+  } else {
+    perfFps.textContent = fps.toFixed(0);
+    perfFps.style.color = "";
+  }
+  
+  // CPU bar shows worst frame time (more useful for detecting hitches)
+  const worstMs = perfWorstFrame;
+  const avgMs = perfAccum / Math.max(1, perfCount);
+  const cpuPercent = (worstMs / 50) * 100;
+  perfCpu.textContent = avgMs.toFixed(1) + "ms";
+  if (perfCpuBar) {
+    perfCpuBar.style.width = Math.min(100, cpuPercent) + "%";
+    perfCpuBar.style.backgroundColor = getPerfBarColor(worstMs);
+  }
+  
+  // GPU bar - same scale as CPU
+  const gpuMs = perfGpuMs;
+  const gpuPercent = gpuMs > 0 ? (gpuMs / 50) * 100 : 0;
+  perfGpu.textContent = gpuMs > 0 ? gpuMs.toFixed(1) + "ms" : "--";
+  if (perfGpuBar) {
+    perfGpuBar.style.width = gpuMs > 0 ? Math.min(100, gpuPercent) + "%" : "0%";
+    perfGpuBar.style.backgroundColor = getPerfBarColor(gpuMs);
+  }
+  
+  if (perfParticles) perfParticles.textContent = particles.length.toLocaleString();
   perfAccum = 0;
   perfCount = 0;
+  perfWorstFrame = 0;
+  perfFrameStart = now;
   perfLastUpdate = now;
 }
 
@@ -101,6 +165,9 @@ let lightIntensity = 1.2;
 let lightPos = [0, 1, 0.3];
 let lightColor = [0.55, 0.74, 1.0];
 let shadingEnabled = false;
+let shadingStyle = "smooth"; // "smooth" or "flat"
+let rimIntensity = 0.4;
+let specIntensity = 0.3;
 let particleColorMode = "gradient";
 let solidColor = [0.9, 0.9, 0.95];
 let noiseStrength = 0.0;
@@ -912,7 +979,7 @@ let instanceBuffer = device.createBuffer({
 });
 
 const uniformBuffer = device.createBuffer({
-  size: 160,
+  size: 176, // 44 floats * 4 bytes
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 
@@ -947,6 +1014,7 @@ struct Uniforms {
   cameraRight: vec4<f32>,
   cameraUp: vec4<f32>,
   motionBlurPad: vec4<f32>,
+  shadingParams: vec4<f32>, // x: flat shading, y: rim intensity, z: spec intensity, w: unused
 };
 
 struct VertexIn {
@@ -970,6 +1038,7 @@ struct VertexOut {
   @location(2) localPos: vec3<f32>,
   @location(3) opacity: f32,
   @location(4) color: vec3<f32>,
+  @location(5) worldPos: vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -998,9 +1067,10 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.position = uniforms.viewProj * vec4<f32>(world, 1.0);
     out.normal = normalize(cross(right, up));
     out.localPos = vec3<f32>(input.pos.xy, 0.0);
+    out.worldPos = world;
   } else {
-  let axis = normalize(input.axis);
-  let angle = input.seed + uniforms.lightColorTime.w * input.spin;
+    let axis = normalize(input.axis);
+    let angle = input.seed + uniforms.lightColorTime.w * input.spin;
     let rotated = rotateByAxisAngle(input.pos, axis, angle);
     let velDir = normalize(input.instVel);
     let stretch = velDir * length(input.instVel) * uniforms.motionBlurPad.x;
@@ -1008,6 +1078,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.position = uniforms.viewProj * vec4<f32>(world, 1.0);
     out.normal = rotateByAxisAngle(input.normal, axis, angle);
     out.localPos = input.pos;
+    out.worldPos = world;
   }
   out.lifeT = input.lifeT;
   out.opacity = input.instOpacity;
@@ -1017,12 +1088,41 @@ fn vs_main(input: VertexIn) -> VertexOut {
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
-  var normal = normalize(input.normal);
+  // Flat shading: compute face normal from screen-space derivatives
+  let flatNormal = normalize(cross(dpdx(input.worldPos), dpdy(input.worldPos)));
+  let smoothNormal = normalize(input.normal);
+  
+  // Choose normal based on shading style (shadingParams.x: 0=smooth, 1=flat)
+  var normal = mix(smoothNormal, flatNormal, uniforms.shadingParams.x);
+  
   let light = normalize(uniforms.lightDirIntensity.xyz);
-  let diff = max(dot(normal, light), 0.0) * uniforms.lightDirIntensity.w;
+  let intensity = uniforms.lightDirIntensity.w;
+  let rimStrength = uniforms.shadingParams.y;
+  let specStrength = uniforms.shadingParams.z;
+  
+  // Diffuse lighting - use standard Lambert for flat, half-Lambert for smooth
+  let NdotL = dot(normal, light);
+  let halfLambert = NdotL * 0.5 + 0.5;
+  let lambertDiff = max(NdotL, 0.0);
+  let smoothDiff = halfLambert * halfLambert;
+  let diff = mix(smoothDiff, lambertDiff, uniforms.shadingParams.x) * intensity;
+  
+  // Fresnel rim lighting (highlights edges facing away from camera)
+  let viewDir = normalize(vec3<f32>(0.0, 0.0, 1.0)); // Approximate view direction
+  let fresnel = 1.0 - max(dot(normal, viewDir), 0.0);
+  let rim = pow(fresnel, 2.5) * rimStrength * intensity;
+  
+  // Specular highlight (Blinn-Phong)
+  let halfVec = normalize(light + viewDir);
+  let spec = pow(max(dot(normal, halfVec), 0.0), 32.0) * specStrength * intensity;
+  
   let lifeT = clamp(input.lifeT, 0.0, 1.0);
   let base = input.color;
-  let lit = base * uniforms.lightColorTime.xyz * (0.25 + diff * 0.9);
+  
+  // Combine lighting: ambient + diffuse + rim + specular
+  let ambient = 0.35;
+  let lighting = ambient + diff * 0.65 + rim + spec;
+  let lit = base * uniforms.lightColorTime.xyz * lighting;
   let shaded = mix(base, lit, step(0.5, uniforms.motionBlurPad.y));
   // Triplanar sampling to avoid seam lines on spheres with planar UVs.
   let n = abs(normal);
@@ -1287,7 +1387,7 @@ const view = new Float32Array(16);
 const proj = new Float32Array(16);
 const viewProj = new Float32Array(16);
 const invViewProj = new Float32Array(16);
-const uniformData = new Float32Array(40);
+const uniformData = new Float32Array(44);
 const dofData = new Float32Array(16);
 let instanceData = new Float32Array(particleCapacity * 17);
 
@@ -1374,6 +1474,11 @@ function updateCamera(timeSeconds) {
   uniformData[37] = shadingEnabled ? 1 : 0;
   uniformData[38] = blendMode === "screen" ? 1 : 0;
   uniformData[39] = blendMode === "additive" ? 0.4 : blendMode === "screen" ? 0.6 : 1.0;
+  // shadingParams: flat shading, rim intensity, spec intensity, unused
+  uniformData[40] = shadingStyle === "flat" ? 1 : 0;
+  uniformData[41] = rimIntensity;
+  uniformData[42] = specIntensity;
+  uniformData[43] = 0;
   device.queue.writeBuffer(uniformBuffer, 0, uniformData.buffer);
 }
 
@@ -3322,6 +3427,23 @@ bindRange("lightIntensity", "lightIntensityVal", () => lightIntensity, (v) => {
   lightIntensity = Math.max(0, v);
   return lightIntensity;
 });
+bindRange("rimIntensity", "rimIntensityVal", () => rimIntensity, (v) => {
+  rimIntensity = Math.max(0, v);
+  return rimIntensity;
+});
+bindRange("specIntensity", "specIntensityVal", () => specIntensity, (v) => {
+  specIntensity = Math.max(0, v);
+  return specIntensity;
+});
+
+const shadingStyleSelect = document.getElementById("shadingStyle");
+if (shadingStyleSelect) {
+  shadingStyleSelect.value = shadingStyle;
+  shadingStyleSelect.addEventListener("change", () => {
+    shadingStyle = shadingStyleSelect.value;
+  });
+}
+
 bindRange("lightPosX", "lightPosXVal", () => lightPos[0], (v) => {
   lightPos[0] = v;
   return lightPos[0];
@@ -4182,6 +4304,17 @@ window.addEventListener("resize", () => {
   }
 });
 
+// Toggle performance HUD visibility with 'm' key
+window.addEventListener("keydown", (event) => {
+  if (event.key === "m" || event.key === "M") {
+    // Don't toggle if typing in an input field
+    if (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA" || event.target.isContentEditable) return;
+    if (perfHud) {
+      perfHud.style.display = perfHud.style.display === "none" ? "" : "none";
+    }
+  }
+});
+
 function getEmissionDirection() {
   const ax = (directionRotX * Math.PI) / 180;
   const ay = (directionRotY * Math.PI) / 180;
@@ -4209,27 +4342,18 @@ function spawnAt(x, y, count = 1, timeOffset = 0) {
     let offset = [0, 0, 0];
     const onEdge = emitFrom === "edge";
     if (emitterShape === "sphere") {
+      // Sphere is rotationally symmetric, no need to apply rotation
       offset = randomInSphere(spread, onEdge);
     } else if (emitterShape === "box") {
-      offset = onEdge ? randomOnBox(spread) : [rand(-spread, spread), rand(-spread, spread), rand(-spread, spread)];
+      const localOffset = onEdge ? randomOnBox(spread) : [rand(-spread, spread), rand(-spread, spread), rand(-spread, spread)];
+      offset = applyEmitterRotation(localOffset);
     } else if (emitterShape === "plane") {
-      offset = onEdge ? randomOnPlane(spread) : randomInPlane(spread);
+      const localOffset = onEdge ? randomOnPlane(spread) : randomInPlane(spread);
+      offset = applyEmitterRotation(localOffset);
     } else if (emitterShape === "line") {
-      const length = emitterSize;
-      const along = rand(-length * 0.5, length * 0.5);
-      const radius = emitterSize;
-      const theta = Math.random() * Math.PI * 2;
-      const r = Math.random() * radius;
-      const jitter = [
-        cameraUp[0] * Math.cos(theta) * r + cameraForward[0] * Math.sin(theta) * r,
-        cameraUp[1] * Math.cos(theta) * r + cameraForward[1] * Math.sin(theta) * r,
-        cameraUp[2] * Math.cos(theta) * r + cameraForward[2] * Math.sin(theta) * r,
-      ];
-      offset = [
-        cameraRight[0] * along + jitter[0],
-        cameraRight[1] * along + jitter[1],
-        cameraRight[2] * along + jitter[2],
-      ];
+      // For a line, always emit along the line (a line has no volume/interior)
+      const localOffset = randomInLine(emitterSize, false);
+      offset = applyEmitterRotation(localOffset);
     }
 
     const pos = [
@@ -4435,6 +4559,7 @@ function frame() {
   perfLastFrame = now;
   perfAccum += frameMs;
   perfCount += 1;
+  if (frameMs > perfWorstFrame) perfWorstFrame = frameMs;
   updatePerfHud(now);
 
   for (let i = particles.length - 1; i >= 0; i -= 1) {

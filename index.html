@@ -1500,20 +1500,49 @@
         bottom: 16px;
         z-index: 1002;
         display: grid;
-        gap: 4px;
-        padding: 8px 10px;
+        gap: 6px;
+        padding: 10px 12px;
         border-radius: 8px;
         border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(8, 12, 16, 0.5);
+        background: rgba(8, 12, 16, 0.6);
         color: rgba(220, 232, 244, 0.85);
         font: 11px/1.3 "SF Mono", Menlo, monospace;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         pointer-events: none;
+        min-width: 120px;
       }
       .perf-hud .label {
         color: rgba(160, 180, 200, 0.8);
         letter-spacing: 0.02em;
+      }
+      .perf-hud .perf-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .perf-hud .perf-row .label {
+        min-width: 28px;
+      }
+      .perf-hud .perf-bar {
+        flex: 1;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+      }
+      .perf-hud .perf-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.15s ease-out, background-color 0.15s ease-out;
+        min-width: 2px;
+      }
+      .perf-hud .perf-value {
+        min-width: 32px;
+        text-align: right;
+        font-size: 10px;
+        opacity: 0.7;
       }
     </style>
   </head>
@@ -1522,8 +1551,17 @@
     <canvas id="gizmo"></canvas>
     <div id="perfHud" class="perf-hud" aria-hidden="true">
       <div><span class="label">FPS</span> <span id="perfFps">--</span></div>
-      <div><span class="label">CPU</span> <span id="perfCpu">--</span> ms</div>
-      <div><span class="label">GPU</span> <span id="perfGpu">--</span> ms</div>
+      <div class="perf-row">
+        <span class="label">CPU</span>
+        <div class="perf-bar"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
+        <span id="perfCpu" class="perf-value">--</span>
+      </div>
+      <div class="perf-row">
+        <span class="label">GPU</span>
+        <div class="perf-bar"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
+        <span id="perfGpu" class="perf-value">--</span>
+      </div>
+      <div><span class="label">Particles</span> <span id="perfParticles">0</span></div>
     </div>
     <div class="settings-sidebar">
       <button class="sidebar-btn" data-panel="particles" title="Particles">
@@ -1972,6 +2010,21 @@
             <div class="control">
               <label for="lightIntensity">Light Intensity <span id="lightIntensityVal"></span></label>
               <input id="lightIntensity" type="range" min="0" max="3" step="0.1" data-default="1.2" />
+            </div>
+            <div class="control">
+              <label for="shadingStyle">Shading Style</label>
+              <select id="shadingStyle">
+                <option value="smooth">Smooth</option>
+                <option value="flat">Flat (Faceted)</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="rimIntensity">Rim Lighting <span id="rimIntensityVal"></span></label>
+              <input id="rimIntensity" type="range" min="0" max="2" step="0.05" data-default="0.4" />
+            </div>
+            <div class="control">
+              <label for="specIntensity">Specular <span id="specIntensityVal"></span></label>
+              <input id="specIntensity" type="range" min="0" max="2" step="0.05" data-default="0.3" />
             </div>
           </div>
         </div>
