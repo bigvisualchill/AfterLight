@@ -168,6 +168,10 @@ let shadingEnabled = false;
 let shadingStyle = "smooth"; // "smooth" or "flat"
 let rimIntensity = 0.4;
 let specIntensity = 0.3;
+let surfaceEnabled = true;
+let wireframeEnabled = false;
+let wireframeSameColor = true;
+let wireframeColor = [1.0, 1.0, 1.0];
 let particleColorMode = "gradient";
 let solidColor = [0.9, 0.9, 0.95];
 let noiseStrength = 0.0;
@@ -705,14 +709,15 @@ function buildCube() {
   const data = [];
   for (const face of faces) {
     const [a, b, c, d] = face.v;
-    data.push(
-      a[0], a[1], a[2], face.n[0], face.n[1], face.n[2],
-      b[0], b[1], b[2], face.n[0], face.n[1], face.n[2],
-      c[0], c[1], c[2], face.n[0], face.n[1], face.n[2],
-      a[0], a[1], a[2], face.n[0], face.n[1], face.n[2],
-      c[0], c[1], c[2], face.n[0], face.n[1], face.n[2],
-      d[0], d[1], d[2], face.n[0], face.n[1], face.n[2],
-    );
+    const n = face.n;
+    // Triangle 1: a, b, c with barycentric (1,0,0), (0,1,0), (0,0,1)
+    data.push(a[0], a[1], a[2], n[0], n[1], n[2], 1, 0, 0);
+    data.push(b[0], b[1], b[2], n[0], n[1], n[2], 0, 1, 0);
+    data.push(c[0], c[1], c[2], n[0], n[1], n[2], 0, 0, 1);
+    // Triangle 2: a, c, d with barycentric (1,0,0), (0,1,0), (0,0,1)
+    data.push(a[0], a[1], a[2], n[0], n[1], n[2], 1, 0, 0);
+    data.push(c[0], c[1], c[2], n[0], n[1], n[2], 0, 1, 0);
+    data.push(d[0], d[1], d[2], n[0], n[1], n[2], 0, 0, 1);
   }
   return new Float32Array(data);
 }
@@ -756,14 +761,15 @@ function buildIcosahedron() {
     [9, 8, 1],
   ];
   const data = [];
+  const bary = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   for (const face of faces) {
-    for (const idx of face) {
-      const v = verts[idx];
+    for (let i = 0; i < 3; i++) {
+      const v = verts[face[i]];
       const len = Math.hypot(v[0], v[1], v[2]);
       const nx = v[0] / len;
       const ny = v[1] / len;
       const nz = v[2] / len;
-      data.push(nx, ny, nz, nx, ny, nz);
+      data.push(nx, ny, nz, nx, ny, nz, bary[i][0], bary[i][1], bary[i][2]);
     }
   }
   return new Float32Array(data);
@@ -803,14 +809,14 @@ function buildSphere(segments = 16, rings = 12) {
         Math.sin(phi0) * Math.sin(theta1),
       ];
 
-      data.push(
-        p0[0], p0[1], p0[2], p0[0], p0[1], p0[2],
-        p1[0], p1[1], p1[2], p1[0], p1[1], p1[2],
-        p2[0], p2[1], p2[2], p2[0], p2[1], p2[2],
-        p0[0], p0[1], p0[2], p0[0], p0[1], p0[2],
-        p2[0], p2[1], p2[2], p2[0], p2[1], p2[2],
-        p3[0], p3[1], p3[2], p3[0], p3[1], p3[2],
-      );
+      // Triangle 1: p0, p1, p2
+      data.push(p0[0], p0[1], p0[2], p0[0], p0[1], p0[2], 1, 0, 0);
+      data.push(p1[0], p1[1], p1[2], p1[0], p1[1], p1[2], 0, 1, 0);
+      data.push(p2[0], p2[1], p2[2], p2[0], p2[1], p2[2], 0, 0, 1);
+      // Triangle 2: p0, p2, p3
+      data.push(p0[0], p0[1], p0[2], p0[0], p0[1], p0[2], 1, 0, 0);
+      data.push(p2[0], p2[1], p2[2], p2[0], p2[1], p2[2], 0, 1, 0);
+      data.push(p3[0], p3[1], p3[2], p3[0], p3[1], p3[2], 0, 0, 1);
     }
   }
   return new Float32Array(data);
@@ -905,9 +911,10 @@ function buildIcosphere(subdivisions = 2) {
       c = tmp;
     }
     const ids = [a, b, c];
-    for (const idx of ids) {
-      const v = verts[idx];
-      data.push(v[0], v[1], v[2], v[0], v[1], v[2]);
+    const bary = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    for (let i = 0; i < 3; i++) {
+      const v = verts[ids[i]];
+      data.push(v[0], v[1], v[2], v[0], v[1], v[2], bary[i][0], bary[i][1], bary[i][2]);
     }
   }
   return new Float32Array(data);
@@ -925,18 +932,16 @@ function rebuildSphereMesh(subdivisions) {
 
 function buildQuad() {
   const n = [0, 0, 1];
-  const v = [
-    [-1, -1, 0],
-    [1, -1, 0],
-    [-1, 1, 0],
-    [-1, 1, 0],
-    [1, -1, 0],
-    [1, 1, 0],
-  ];
+  // Two triangles, each with barycentric coordinates
   const data = [];
-  for (const p of v) {
-    data.push(p[0], p[1], p[2], n[0], n[1], n[2]);
-  }
+  // Triangle 1
+  data.push(-1, -1, 0, n[0], n[1], n[2], 1, 0, 0);
+  data.push(1, -1, 0, n[0], n[1], n[2], 0, 1, 0);
+  data.push(-1, 1, 0, n[0], n[1], n[2], 0, 0, 1);
+  // Triangle 2
+  data.push(-1, 1, 0, n[0], n[1], n[2], 1, 0, 0);
+  data.push(1, -1, 0, n[0], n[1], n[2], 0, 1, 0);
+  data.push(1, 1, 0, n[0], n[1], n[2], 0, 0, 1);
   return new Float32Array(data);
 }
 
@@ -946,7 +951,7 @@ function createMeshBuffer(data) {
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   });
   device.queue.writeBuffer(buffer, 0, data);
-  return { buffer, count: data.length / 6 };
+  return { buffer, count: data.length / 9 }; // 9 floats per vertex: pos(3) + normal(3) + bary(3)
 }
 
 const meshBuffers = {
@@ -979,7 +984,7 @@ let instanceBuffer = device.createBuffer({
 });
 
 const uniformBuffer = device.createBuffer({
-  size: 176, // 44 floats * 4 bytes
+  size: 208, // 52 floats * 4 bytes
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 
@@ -1015,11 +1020,14 @@ struct Uniforms {
   cameraUp: vec4<f32>,
   motionBlurPad: vec4<f32>,
   shadingParams: vec4<f32>, // x: flat shading, y: rim intensity, z: spec intensity, w: unused
+  wireframeParams: vec4<f32>, // x: wireframe enabled, y: surface enabled, z: same color, w: unused
+  wireframeColor: vec4<f32>, // rgb: wireframe color, a: unused
 };
 
 struct VertexIn {
   @location(0) pos: vec3<f32>,
   @location(1) normal: vec3<f32>,
+  @location(11) bary: vec3<f32>,
   @location(2) instPos: vec3<f32>,
   @location(3) instSize: f32,
   @location(4) lifeT: f32,
@@ -1039,6 +1047,7 @@ struct VertexOut {
   @location(3) opacity: f32,
   @location(4) color: vec3<f32>,
   @location(5) worldPos: vec3<f32>,
+  @location(6) bary: vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -1068,9 +1077,10 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.normal = normalize(cross(right, up));
     out.localPos = vec3<f32>(input.pos.xy, 0.0);
     out.worldPos = world;
+    out.bary = vec3<f32>(1.0, 1.0, 1.0); // No wireframe for 2D shapes
   } else {
-    let axis = normalize(input.axis);
-    let angle = input.seed + uniforms.lightColorTime.w * input.spin;
+  let axis = normalize(input.axis);
+  let angle = input.seed + uniforms.lightColorTime.w * input.spin;
     let rotated = rotateByAxisAngle(input.pos, axis, angle);
     let velDir = normalize(input.instVel);
     let stretch = velDir * length(input.instVel) * uniforms.motionBlurPad.x;
@@ -1079,6 +1089,7 @@ fn vs_main(input: VertexIn) -> VertexOut {
     out.normal = rotateByAxisAngle(input.normal, axis, angle);
     out.localPos = input.pos;
     out.worldPos = world;
+    out.bary = input.bary;
   }
   out.lifeT = input.lifeT;
   out.opacity = input.instOpacity;
@@ -1086,8 +1097,20 @@ fn vs_main(input: VertexIn) -> VertexOut {
   return out;
 }
 
+// Wireframe edge detection using barycentric coordinates
+fn wireframeEdge(bary: vec3<f32>, thickness: f32) -> f32 {
+  let d = fwidth(bary);
+  let a3 = smoothstep(vec3<f32>(0.0), d * thickness, bary);
+  return min(min(a3.x, a3.y), a3.z);
+}
+
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
+  // Wireframe parameters
+  let wireframeOn = uniforms.wireframeParams.x > 0.5;
+  let surfaceOn = uniforms.wireframeParams.y > 0.5;
+  let sameColor = uniforms.wireframeParams.z > 0.5;
+  
   // Flat shading: compute face normal from screen-space derivatives
   let flatNormal = normalize(cross(dpdx(input.worldPos), dpdy(input.worldPos)));
   let smoothNormal = normalize(input.normal);
@@ -1175,8 +1198,32 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
     let outColor = mix(colorOut, colorOut * outAlpha, premul);
     return vec4<f32>(outColor, outAlpha);
   }
-  let outAlpha = alpha;
-  let outColor = mix(colorOut, colorOut * outAlpha, premul);
+  
+  // 3D shapes - apply wireframe if enabled
+  var finalColor = colorOut;
+  var finalAlpha = alpha;
+  
+  if (wireframeOn) {
+    let wireColor = select(uniforms.wireframeColor.rgb, input.color, sameColor);
+    let edgeFactor = wireframeEdge(input.bary, 1.5);
+    
+    if (surfaceOn) {
+      // Both surface and wireframe
+      finalColor = mix(wireColor, colorOut, edgeFactor);
+    } else {
+      // Wireframe only - discard interior pixels
+      if (edgeFactor > 0.5) {
+        discard;
+      }
+      finalColor = wireColor;
+    }
+  } else if (!surfaceOn) {
+    // No surface and no wireframe - nothing to render
+    discard;
+  }
+  
+  let outAlpha = finalAlpha;
+  let outColor = mix(finalColor, finalColor * outAlpha, premul);
   return vec4<f32>(outColor, outAlpha);
 }
 `;
@@ -1232,10 +1279,11 @@ function createParticlePipeline(mode, depthWriteEnabled = false, cullMode = "non
       entryPoint: "vs_main",
       buffers: [
         {
-          arrayStride: 24,
+          arrayStride: 36, // 9 floats: pos(3) + normal(3) + bary(3)
           attributes: [
             { shaderLocation: 0, format: "float32x3", offset: 0 },
             { shaderLocation: 1, format: "float32x3", offset: 12 },
+            { shaderLocation: 11, format: "float32x3", offset: 24 }, // barycentric
           ],
         },
         {
@@ -1387,7 +1435,7 @@ const view = new Float32Array(16);
 const proj = new Float32Array(16);
 const viewProj = new Float32Array(16);
 const invViewProj = new Float32Array(16);
-const uniformData = new Float32Array(44);
+const uniformData = new Float32Array(52);
 const dofData = new Float32Array(16);
 let instanceData = new Float32Array(particleCapacity * 17);
 
@@ -1479,6 +1527,16 @@ function updateCamera(timeSeconds) {
   uniformData[41] = rimIntensity;
   uniformData[42] = specIntensity;
   uniformData[43] = 0;
+  // wireframeParams: wireframe enabled, surface enabled, same color, unused
+  uniformData[44] = wireframeEnabled ? 1 : 0;
+  uniformData[45] = surfaceEnabled ? 1 : 0;
+  uniformData[46] = wireframeSameColor ? 1 : 0;
+  uniformData[47] = 0;
+  // wireframeColor
+  uniformData[48] = wireframeColor[0];
+  uniformData[49] = wireframeColor[1];
+  uniformData[50] = wireframeColor[2];
+  uniformData[51] = 1.0;
   device.queue.writeBuffer(uniformBuffer, 0, uniformData.buffer);
 }
 
@@ -3444,6 +3502,63 @@ if (shadingStyleSelect) {
   });
 }
 
+// Surface toggle
+const surfaceToggle = document.getElementById("surfaceEnabled");
+if (surfaceToggle) {
+  setToggleState(surfaceToggle, surfaceEnabled);
+  surfaceToggle.addEventListener("click", () => {
+    surfaceEnabled = !surfaceEnabled;
+    setToggleState(surfaceToggle, surfaceEnabled);
+  });
+}
+
+// Wireframe controls
+const wireframeToggle = document.getElementById("wireframeEnabled");
+const wireframeColorControls = document.getElementById("wireframeColorControls");
+const wireframeSameColorToggle = document.getElementById("wireframeSameColor");
+const wireframeColorPicker = document.getElementById("wireframeColorPicker");
+const wireframeColorInput = document.getElementById("wireframeColor");
+
+function updateWireframeUI() {
+  if (wireframeColorControls) {
+    wireframeColorControls.style.display = wireframeEnabled ? "" : "none";
+  }
+  if (wireframeColorPicker) {
+    wireframeColorPicker.style.display = wireframeSameColor ? "none" : "";
+  }
+}
+
+if (wireframeToggle) {
+  setToggleState(wireframeToggle, wireframeEnabled);
+  wireframeToggle.addEventListener("click", () => {
+    wireframeEnabled = !wireframeEnabled;
+    setToggleState(wireframeToggle, wireframeEnabled);
+    updateWireframeUI();
+  });
+}
+
+if (wireframeSameColorToggle) {
+  setToggleState(wireframeSameColorToggle, wireframeSameColor);
+  wireframeSameColorToggle.addEventListener("click", () => {
+    wireframeSameColor = !wireframeSameColor;
+    setToggleState(wireframeSameColorToggle, wireframeSameColor);
+    updateWireframeUI();
+  });
+}
+
+if (wireframeColorInput) {
+  wireframeColorInput.value = "#ffffff";
+  wireframeColorInput.addEventListener("input", () => {
+    const hex = wireframeColorInput.value;
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    wireframeColor = [r, g, b];
+  });
+}
+
+updateWireframeUI();
+
 bindRange("lightPosX", "lightPosXVal", () => lightPos[0], (v) => {
   lightPos[0] = v;
   return lightPos[0];
@@ -4657,14 +4772,14 @@ function frame() {
 
   }
 
-  const lambda = emissionRate * dt;
-  spawnAccum += lambda;
-  const spawnNow = Math.floor(spawnAccum);
-  if (spawnNow > 0) {
-    spawnAccum -= spawnNow;
-    for (let i = 0; i < spawnNow; i += 1) {
-      const offset = ((i + 0.5) / spawnNow) * dt;
-      spawnAt(0, 0, 1, offset);
+    const lambda = emissionRate * dt;
+    spawnAccum += lambda;
+    const spawnNow = Math.floor(spawnAccum);
+    if (spawnNow > 0) {
+      spawnAccum -= spawnNow;
+      for (let i = 0; i < spawnNow; i += 1) {
+        const offset = ((i + 0.5) / spawnNow) * dt;
+        spawnAt(0, 0, 1, offset);
     }
   }
 

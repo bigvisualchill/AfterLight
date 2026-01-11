@@ -388,6 +388,22 @@
       }
       .inline-toggle label {
         flex: 1;
+      }
+      #wireframeColorControls {
+        margin-top: 10px;
+        padding-left: 12px;
+        border-left: 2px solid rgba(255, 255, 255, 0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #wireframeColorPicker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      #wireframeColorPicker label {
+        flex: 1;
         min-width: 0;
         white-space: normal;
       }
@@ -1661,17 +1677,17 @@
               <div class="slider-with-reset">
                 <input id="softness" type="range" min="0" max="1" step="0.05" data-default="0" />
                 <button id="softnessReset" type="button" class="reset-btn">ø</button>
-              </div>
+          </div>
             </div>
             <div id="sphereDetailControl">
               <label for="sphereDetail">Sphere Detail (Subdivisions) <span id="sphereDetailVal"></span></label>
               <div class="slider-with-reset">
                 <input id="sphereDetail" type="range" min="0" max="6" step="1" data-default="2" />
                 <button id="sphereDetailReset" type="button" class="reset-btn">ø</button>
-              </div>
-            </div>
           </div>
-          <div class="control">
+            </div>
+            </div>
+            <div class="control">
             <label>Particle Size</label>
             <label for="particleSize">Size <span id="particleSizeVal"></span></label>
             <input id="particleSize" type="range" min="1" max="100" step="1" data-default="1" />
@@ -1696,11 +1712,11 @@
             <div id="gradientControl">
               <label for="colorGradientCanvas">Color Gradient</label>
               <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
-            </div>
+          </div>
             <div id="solidColorControl">
-              <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
-              <input id="solidColor" type="color" />
-            </div>
+            <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
+            <input id="solidColor" type="color" />
+          </div>
             <label for="blendMode">Blend Mode</label>
             <select id="blendMode">
               <option value="alpha">Normal</option>
@@ -1738,14 +1754,14 @@
             <div class="control">
               <label for="emitterSize">Emitter Size <span id="emitterSizeVal"></span></label>
               <input id="emitterSize" type="range" min="0" max="1" step="0.02" data-default="0.2" />
-            </div>
-            <div class="control select-control">
-              <label for="emitFrom">Emit From</label>
-              <select id="emitFrom">
-                <option value="volume">Volume</option>
-                <option value="edge">Edge</option>
-              </select>
-            </div>
+          </div>
+          <div class="control select-control">
+            <label for="emitFrom">Emit From</label>
+            <select id="emitFrom">
+              <option value="volume">Volume</option>
+              <option value="edge">Edge</option>
+            </select>
+          </div>
           </div>
           <div class="control">
             <label for="emissionDirection">Emission Direction</label>
@@ -1764,27 +1780,27 @@
           </div>
           <div class="control rotation-group">
             <label>Emitter Rotation</label>
-            <div id="direction3dControls" class="direction-3d">
+          <div id="direction3dControls" class="direction-3d">
               <div class="rotation-axis">
                 <span class="axis-label">X</span>
-                <div id="directionXWheel" class="direction-wheel" role="slider" aria-label="Rotate X">
-                  <div id="directionXDot" class="direction-wheel-dot"></div>
-                </div>
+              <div id="directionXWheel" class="direction-wheel" role="slider" aria-label="Rotate X">
+                <div id="directionXDot" class="direction-wheel-dot"></div>
+              </div>
                 <span class="direction-values"><span id="directionXVal"></span></span>
                 <button id="directionXReset" type="button" class="reset-btn direction-reset">ø</button>
-              </div>
+            </div>
               <div class="rotation-axis">
                 <span class="axis-label">Y</span>
-                <div id="directionYWheel" class="direction-wheel" role="slider" aria-label="Rotate Y">
-                  <div id="directionYDot" class="direction-wheel-dot"></div>
-                </div>
+              <div id="directionYWheel" class="direction-wheel" role="slider" aria-label="Rotate Y">
+                <div id="directionYDot" class="direction-wheel-dot"></div>
+              </div>
                 <span class="direction-values"><span id="directionYVal"></span></span>
                 <button id="directionYReset" type="button" class="reset-btn direction-reset">ø</button>
-              </div>
+            </div>
               <div class="rotation-axis">
                 <span class="axis-label">Z</span>
-                <div id="directionZWheel" class="direction-wheel" role="slider" aria-label="Rotate Z">
-                  <div id="directionZDot" class="direction-wheel-dot"></div>
+              <div id="directionZWheel" class="direction-wheel" role="slider" aria-label="Rotate Z">
+                <div id="directionZDot" class="direction-wheel-dot"></div>
                 </div>
                 <span class="direction-values"><span id="directionZVal"></span></span>
                 <button id="directionZReset" type="button" class="reset-btn direction-reset">ø</button>
@@ -1867,57 +1883,57 @@
               <button id="vortexEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
             </div>
             <div id="vortexControls" class="control-stack">
-              <div class="control">
-                <label for="vortexStrength">Vortex Strength <span id="vortexStrengthVal"></span></label>
-                <input id="vortexStrength" type="range" min="0" max="100" step="0.1" data-default="1.8" />
-              </div>
-              <div class="control">
-                <label for="vortexRadius">Vortex Radius <span id="vortexRadiusVal"></span></label>
-                <input id="vortexRadius" type="range" min="0.1" max="100" step="0.1" data-default="1.5" />
-              </div>
-              <div class="control">
+            <div class="control">
+              <label for="vortexStrength">Vortex Strength <span id="vortexStrengthVal"></span></label>
+              <input id="vortexStrength" type="range" min="0" max="100" step="0.1" data-default="1.8" />
+            </div>
+            <div class="control">
+              <label for="vortexRadius">Vortex Radius <span id="vortexRadiusVal"></span></label>
+              <input id="vortexRadius" type="range" min="0.1" max="100" step="0.1" data-default="1.5" />
+            </div>
+            <div class="control">
                 <label>Vortex Position</label>
                 <label for="vortexPosX">X <span id="vortexPosXVal"></span></label>
-                <input id="vortexPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="vortexPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
                 <label for="vortexPosY">Y <span id="vortexPosYVal"></span></label>
-                <input id="vortexPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="vortexPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
                 <label for="vortexPosZ">Z <span id="vortexPosZVal"></span></label>
-                <input id="vortexPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+              <input id="vortexPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
                 <div class="inline-toggle">
                   <label for="vortexGizmo">Show Vortex Gizmo</label>
                   <button id="vortexGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-                </div>
+            </div>
               </div>
               <div class="control rotation-group">
                 <label>Vortex Rotation</label>
-                <div class="direction-3d">
+            <div class="direction-3d">
                   <div class="rotation-axis">
                     <span class="axis-label">X</span>
-                    <div id="vortexRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex X">
-                      <div id="vortexRotXDot" class="direction-wheel-dot"></div>
-                    </div>
+                <div id="vortexRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex X">
+                  <div id="vortexRotXDot" class="direction-wheel-dot"></div>
+                </div>
                     <span class="direction-values"><span id="vortexRotXVal"></span></span>
                     <button id="vortexRotXReset" type="button" class="reset-btn direction-reset">ø</button>
-                  </div>
+              </div>
                   <div class="rotation-axis">
                     <span class="axis-label">Y</span>
-                    <div id="vortexRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Y">
-                      <div id="vortexRotYDot" class="direction-wheel-dot"></div>
-                    </div>
+                <div id="vortexRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Y">
+                  <div id="vortexRotYDot" class="direction-wheel-dot"></div>
+                </div>
                     <span class="direction-values"><span id="vortexRotYVal"></span></span>
                     <button id="vortexRotYReset" type="button" class="reset-btn direction-reset">ø</button>
-                  </div>
+              </div>
                   <div class="rotation-axis">
                     <span class="axis-label">Z</span>
-                    <div id="vortexRotZWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Z">
-                      <div id="vortexRotZDot" class="direction-wheel-dot"></div>
+                <div id="vortexRotZWheel" class="direction-wheel" role="slider" aria-label="Rotate vortex Z">
+                  <div id="vortexRotZDot" class="direction-wheel-dot"></div>
                     </div>
                     <span class="direction-values"><span id="vortexRotZVal"></span></span>
                     <button id="vortexRotZReset" type="button" class="reset-btn direction-reset">ø</button>
-                  </div>
                 </div>
               </div>
             </div>
+          </div>
             <div class="control">
               <label for="attractorEnabled">Attractor</label>
               <button id="attractorEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
@@ -1931,15 +1947,15 @@
                 <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
                 <input id="attractorRadius" type="range" min="0" max="100" step="0.1" data-default="0" />
               </div>
-            </div>
+              </div>
             <div id="attractorPositionPanel" class="control">
               <label>Attractor Position</label>
               <label for="attractorPosX">X <span id="attractorPosXVal"></span></label>
-              <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
               <label for="attractorPosY">Y <span id="attractorPosYVal"></span></label>
-              <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
               <label for="attractorPosZ">Z <span id="attractorPosZVal"></span></label>
-              <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+                <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
               <div class="inline-toggle">
                 <label for="attractorGizmo">Show Attractor Gizmo</label>
                 <button id="attractorGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
@@ -1990,6 +2006,24 @@
             <button id="shadingEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
           </div>
           <div id="shadingControls" class="control-stack hidden-controls">
+            <div class="inline-toggle" style="margin-bottom: 10px;">
+              <label for="surfaceEnabled">Surface</label>
+              <button id="surfaceEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+            </div>
+            <div class="inline-toggle" style="margin-bottom: 6px;">
+              <label for="wireframeEnabled">Wireframe</label>
+              <button id="wireframeEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
+            <div id="wireframeColorControls" style="display: none; margin-bottom: 10px; padding-left: 12px; border-left: 2px solid rgba(255,255,255,0.15);">
+              <div class="inline-toggle" style="margin-bottom: 6px;">
+                <label for="wireframeSameColor">Same as particle color</label>
+                <button id="wireframeSameColor" class="pill-toggle" type="button" data-state="on">On</button>
+              </div>
+              <div id="wireframeColorPicker" style="display: none;">
+                <label for="wireframeColor" style="margin-right: 10px;">Wireframe Color</label>
+                <input id="wireframeColor" type="color" value="#ffffff" />
+              </div>
+            </div>
             <div class="control">
               <label>Light Position</label>
               <label for="lightPosX">X <span id="lightPosXVal"></span></label>
@@ -2051,7 +2085,7 @@
               <div class="inline-toggle">
                 <label for="cameraGizmo">Show Camera Gizmo</label>
                 <button id="cameraGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-              </div>
+            </div>
             </div>
             <div class="control rotation-group">
               <label>Camera Rotation</label>
@@ -2060,15 +2094,15 @@
                   <span class="axis-label">X</span>
                   <div id="cameraRotXWheel" class="direction-wheel" role="slider" aria-label="Rotate camera X">
                     <div id="cameraRotXDot" class="direction-wheel-dot"></div>
-                  </div>
+            </div>
                   <span class="direction-values"><span id="cameraRotXVal"></span></span>
                   <button id="cameraRotXReset" type="button" class="reset-btn direction-reset">ø</button>
-                </div>
+            </div>
                 <div class="rotation-axis">
                   <span class="axis-label">Y</span>
                   <div id="cameraRotYWheel" class="direction-wheel" role="slider" aria-label="Rotate camera Y">
                     <div id="cameraRotYDot" class="direction-wheel-dot"></div>
-                  </div>
+            </div>
                   <span class="direction-values"><span id="cameraRotYVal"></span></span>
                   <button id="cameraRotYReset" type="button" class="reset-btn direction-reset">ø</button>
                 </div>
@@ -2095,10 +2129,10 @@
                 <button id="focusNavigator" class="pill-toggle" type="button" data-state="off">Off</button>
               </div>
             </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
     <!-- Focus Navigator Window -->
     <div id="focusNavigatorWindow" class="focus-navigator" style="display: none;">
@@ -2107,7 +2141,7 @@
         <button class="nav-view-btn" data-view="left" title="Left View">L</button>
         <button class="nav-view-btn" data-view="right" title="Right View">R</button>
         <button class="nav-view-btn" data-view="bottom" title="Bottom View">B</button>
-      </div>
+    </div>
       <canvas id="navigatorCanvas" width="200" height="200"></canvas>
     </div>
 
