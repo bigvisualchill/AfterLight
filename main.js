@@ -198,6 +198,15 @@ let wireframeSameColor = true;
 let wireframeColor = [1.0, 1.0, 1.0];
 let particleColorMode = "gradient";
 let solidColor = [0.9, 0.9, 0.95];
+// Background settings
+let bgMode = "solid"; // transparent, solid, linear, radial
+let bgSolidColor = [0.0, 0.0, 0.0]; // Default black color #000000
+let bgGradientPoints = [
+  { x: 0, color: [0.043, 0.059, 0.078] },
+  { x: 1, color: [0.1, 0.15, 0.2] },
+];
+let bgLinearDirection = "vertical"; // vertical, horizontal
+let bgRadialCenter = [0.5, 0.5];
 let noiseStrength = 0.0;
 let blendMode = "screen";
 let softness = 0.0;
@@ -1558,6 +1567,123 @@ const compositePipeline = device.createRenderPipeline({
   },
   primitive: { topology: "triangle-list" },
 });
+
+// ============================================================================
+// Background Shader Setup
+// ============================================================================
+const bgShaderCode = await (await fetch("./shaders/background.wgsl")).text();
+const bgModule = device.createShaderModule({ code: bgShaderCode });
+bgModule.getCompilationInfo().then((info) => {
+  if (info.messages.length) {
+    console.group("Background shader compile messages");
+    for (const msg of info.messages) {
+      console.log(msg.type, msg.lineNum, msg.linePos, msg.message);
+    }
+    console.groupEnd();
+  }
+});
+
+// Background uniform buffer
+// WGSL std140-like layout: after numStops (u32) the vec3u pad must be 16-byte aligned.
+// Total size rounds up to 192 bytes.
+const bgUniformBuffer = device.createBuffer({
+  size: 192,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+// Background pipeline (renders to current output format)
+const bgPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: bgModule,
+    entryPoint: "vs_main",
+  },
+  fragment: {
+    module: bgModule,
+    entryPoint: "fs_main",
+    targets: [{ format }],
+  },
+  primitive: { topology: "triangle-list" },
+});
+
+// Background pipeline for HDR output (when DOF is active)
+const bgPipelineHDR = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: bgModule,
+    entryPoint: "vs_main",
+  },
+  fragment: {
+    module: bgModule,
+    entryPoint: "fs_main",
+    targets: [{ format: "rgba16float" }],
+  },
+  primitive: { topology: "triangle-list" },
+});
+
+// Background bind group
+const bgBindGroup = device.createBindGroup({
+  layout: bgPipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: bgUniformBuffer } },
+  ],
+});
+
+const bgBindGroupHDR = device.createBindGroup({
+  layout: bgPipelineHDR.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: bgUniformBuffer } },
+  ],
+});
+
+function updateBgUniforms() {
+  const data = new ArrayBuffer(192);
+  const view = new DataView(data);
+  
+  // mode: u32 (offset 0)
+  const modeMap = { transparent: 0, solid: 1, linear: 2, radial: 3 };
+  view.setUint32(0, modeMap[bgMode] || 0, true);
+  
+  // linearDirection: u32 (offset 4)
+  view.setUint32(4, bgLinearDirection === "horizontal" ? 1 : 0, true);
+  
+  // radialCenter: vec2f (offset 8)
+  view.setFloat32(8, bgRadialCenter[0], true);
+  view.setFloat32(12, bgRadialCenter[1], true);
+  
+  // solidColor: vec4f (offset 16)
+  view.setFloat32(16, bgSolidColor[0], true);
+  view.setFloat32(20, bgSolidColor[1], true);
+  view.setFloat32(24, bgSolidColor[2], true);
+  view.setFloat32(28, 1.0, true); // alpha
+  
+  // Gradient stops: 8 * vec4f (offset 32)
+  // Each stop: rgb + position (stored in alpha channel)
+  const sortedPoints = [...bgGradientPoints].sort((a, b) => a.x - b.x);
+  for (let i = 0; i < 8; i++) {
+    const offset = 32 + i * 16;
+    if (i < sortedPoints.length) {
+      const p = sortedPoints[i];
+      view.setFloat32(offset, p.color[0], true);
+      view.setFloat32(offset + 4, p.color[1], true);
+      view.setFloat32(offset + 8, p.color[2], true);
+      view.setFloat32(offset + 12, p.x, true); // position in alpha
+    } else {
+      // Fill with zeros
+      view.setFloat32(offset, 0, true);
+      view.setFloat32(offset + 4, 0, true);
+      view.setFloat32(offset + 8, 0, true);
+      view.setFloat32(offset + 12, 1, true);
+    }
+  }
+  
+  // numStops: u32 (offset 160)
+  view.setUint32(160, Math.min(sortedPoints.length, 8), true);
+  
+  // _pad: vec3u (offset 176) - leave as zeros to satisfy 16-byte alignment
+  
+  device.queue.writeBuffer(bgUniformBuffer, 0, data);
+}
 
 // DOF Textures (created in resize)
 let hdrColorTexture;     // Scene rendered in HDR (rgba16float)
@@ -4303,6 +4429,77 @@ solidColorInput.addEventListener("input", () => {
   solidColorVal.textContent = solidColorInput.value;
 });
 
+// Background controls
+const bgModeSelect = document.getElementById("bgMode");
+const bgSolidControls = document.getElementById("bgSolidControls");
+const bgSolidColorInput = document.getElementById("bgSolidColor");
+const bgGradientControls = document.getElementById("bgGradientControls");
+const bgGradientCanvas = document.getElementById("bgGradientCanvas");
+const bgLinearControls = document.getElementById("bgLinearControls");
+const bgLinearDirectionSelect = document.getElementById("bgLinearDirection");
+const bgRadialControls = document.getElementById("bgRadialControls");
+const bgRadialCenterXInput = document.getElementById("bgRadialCenterX");
+const bgRadialCenterYInput = document.getElementById("bgRadialCenterY");
+const bgRadialCenterXVal = document.getElementById("bgRadialCenterXVal");
+const bgRadialCenterYVal = document.getElementById("bgRadialCenterYVal");
+
+let bgGradientEditor = null;
+
+function updateBgModeUI() {
+  const mode = bgMode;
+  bgSolidControls.style.display = mode === "solid" ? "" : "none";
+  bgGradientControls.style.display = (mode === "linear" || mode === "radial") ? "" : "none";
+  bgLinearControls.style.display = mode === "linear" ? "" : "none";
+  bgRadialControls.style.display = mode === "radial" ? "" : "none";
+  document.body.classList.toggle("transparent-bg", mode === "transparent");
+  
+  // Initialize gradient editor if needed
+  if ((mode === "linear" || mode === "radial") && !bgGradientEditor) {
+    bgGradientEditor = setupGradientEditor(bgGradientCanvas, {
+      points: bgGradientPoints,
+      onChange: (points) => {
+        bgGradientPoints = points;
+      },
+    });
+  }
+  if (bgGradientEditor) {
+    bgGradientEditor.resize();
+  }
+}
+
+bgModeSelect.value = bgMode;
+updateBgModeUI();
+
+bgModeSelect.addEventListener("change", () => {
+  bgMode = bgModeSelect.value;
+  updateBgModeUI();
+});
+
+bgSolidColorInput.value = rgbToHex(bgSolidColor);
+bgSolidColorInput.addEventListener("input", () => {
+  bgSolidColor = hexToRgb(bgSolidColorInput.value);
+});
+
+bgLinearDirectionSelect.value = bgLinearDirection;
+bgLinearDirectionSelect.addEventListener("change", () => {
+  bgLinearDirection = bgLinearDirectionSelect.value;
+});
+
+bgRadialCenterXInput.value = bgRadialCenter[0];
+bgRadialCenterYInput.value = bgRadialCenter[1];
+bgRadialCenterXVal.textContent = bgRadialCenter[0].toFixed(2);
+bgRadialCenterYVal.textContent = bgRadialCenter[1].toFixed(2);
+
+bgRadialCenterXInput.addEventListener("input", () => {
+  bgRadialCenter[0] = parseFloat(bgRadialCenterXInput.value);
+  bgRadialCenterXVal.textContent = bgRadialCenter[0].toFixed(2);
+});
+
+bgRadialCenterYInput.addEventListener("input", () => {
+  bgRadialCenter[1] = parseFloat(bgRadialCenterYInput.value);
+  bgRadialCenterYVal.textContent = bgRadialCenter[1].toFixed(2);
+});
+
 function attachSliderResets() {
   // Add a reset button after each range input that has a data-default
   document.querySelectorAll('input[type="range"][data-default]').forEach((input) => {
@@ -4329,6 +4526,8 @@ function setupSettingCollapsibles() {
   document.querySelectorAll(".panel-content .control").forEach((control) => {
     // Skip direction controls (they're inside rotation groups)
     if (control.classList.contains("direction-control")) return;
+    // Keep background controls always visible (no collapsible wrapper)
+    if (control.closest('.panel[data-panel="background"]')) return;
     // Skip controls inside control-body (they're nested inside another setting)
     if (control.closest(".control-body")) return;
     const label = control.querySelector("label");
@@ -4450,6 +4649,7 @@ function setupSettingCollapsibles() {
         sizeCurveEditor.resize();
         opacityCurveEditor.resize();
         gradientEditor.resize();
+        if (bgGradientEditor) bgGradientEditor.resize();
       }
     };
     
@@ -4651,6 +4851,7 @@ document.querySelectorAll(".sidebar-btn").forEach((btn) => {
     sizeCurveEditor.resize();
     opacityCurveEditor.resize();
     gradientEditor.resize();
+    if (bgGradientEditor) bgGradientEditor.resize();
     }
   };
   
@@ -4679,6 +4880,7 @@ window.addEventListener("resize", () => {
   sizeCurveEditor.resize();
   opacityCurveEditor.resize();
   gradientEditor.resize();
+  if (bgGradientEditor) bgGradientEditor.resize();
   updateDirectionUI();
   if (focusNavigatorEnabled) {
     resizeNavigatorCanvas();
@@ -5179,18 +5381,50 @@ function frame() {
 
   const encoder = device.createCommandEncoder();
   
+  // Update background uniforms
+  updateBgUniforms();
+  
   // ============================================================================
   // Scene Render Pass (to HDR texture when DOF is active)
   // ============================================================================
   const particleTargetView = (cameraViewActive && useDOF)
     ? hdrColorTexture.createView()
     : context.getCurrentTexture().createView();
+  
+  // Determine clear color based on background mode
+  const useBackgroundShader = bgMode !== "transparent";
+  const clearColor = bgMode === "solid" 
+    ? { r: bgSolidColor[0], g: bgSolidColor[1], b: bgSolidColor[2], a: 1 }
+    : bgMode === "transparent"
+    ? { r: 0, g: 0, b: 0, a: 0 }
+    : { r: 0, g: 0, b: 0, a: 1 }; // For gradients, we'll render the background
+  
+  // If using gradient background, render it first
+  if (bgMode === "linear" || bgMode === "radial") {
+    const bgPass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: particleTargetView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+    });
+    const activeBgPipeline = (cameraViewActive && useDOF) ? bgPipelineHDR : bgPipeline;
+    const activeBgBindGroup = (cameraViewActive && useDOF) ? bgBindGroupHDR : bgBindGroup;
+    bgPass.setPipeline(activeBgPipeline);
+    bgPass.setBindGroup(0, activeBgBindGroup);
+    bgPass.draw(6);
+    bgPass.end();
+  }
+  
   const particlePass = encoder.beginRenderPass({
     colorAttachments: [
       {
         view: particleTargetView,
-        clearValue: { r: 0.04, g: 0.06, b: 0.08, a: 1 },
-        loadOp: "clear",
+        clearValue: clearColor,
+        loadOp: (bgMode === "linear" || bgMode === "radial") ? "load" : "clear",
         storeOp: "store",
       },
     ],
