@@ -1788,19 +1788,19 @@
           </div>
             </div>
             </div>
-            <div class="control">
-            <label>Particle Size</label>
-            <label for="particleSize">Size <span id="particleSizeVal"></span></label>
-            <input id="particleSize" type="range" min="1" max="100" step="1" data-default="1" />
-            <label for="sizeCurveCanvas">Size Curve</label>
-            <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
-          </div>
           <div class="control">
             <label>Particle Life</label>
             <label for="lifeSeconds">Life (sec) <span id="lifeSecondsVal"></span></label>
             <input id="lifeSeconds" type="range" min="0.4" max="100" step="0.1" data-default="2.0" />
             <label for="lifeRandom">Life Random <span id="lifeRandomVal"></span></label>
             <input id="lifeRandom" type="range" min="0" max="1" step="0.05" data-default="0" />
+          </div>
+          <div class="control">
+            <label>Particle Size</label>
+            <label for="particleSize">Size <span id="particleSizeVal"></span></label>
+            <input id="particleSize" type="range" min="1" max="100" step="1" data-default="1" />
+            <label for="sizeCurveCanvas">Size Curve</label>
+            <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
           </div>
           <div class="control">
             <label>Particle Color</label>
@@ -1852,32 +1852,33 @@
             </select>
           </div>
           <div id="emitterShapeControls" class="control-stack">
-            <div class="control">
+            <div class="control shape-only">
               <label for="emitterSize">Emitter Size <span id="emitterSizeVal"></span></label>
               <input id="emitterSize" type="range" min="0" max="1" step="0.02" data-default="0.2" />
           </div>
-          <div class="control select-control">
+          <div class="control select-control shape-only">
             <label for="emitFrom">Emit From</label>
             <select id="emitFrom">
               <option value="volume">Volume</option>
               <option value="edge">Edge</option>
             </select>
           </div>
+          <div class="control">
+            <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
+            <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
           </div>
           <div class="control">
-            <label for="emissionDirection">Emission Direction</label>
-            <select id="emissionDirection">
-              <option value="directional">Directional</option>
-              <option value="outwards">Outwards</option>
-              <option value="bidirectional">Bi-directional</option>
-            </select>
-          </div>
-          <div class="control">
-            <label>Particle Velocity</label>
-            <label for="initialSpeed">Velocity <span id="initialSpeedVal"></span></label>
-            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
-            <label for="speedRandom">Velocity Random <span id="speedRandomVal"></span></label>
-            <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
+            <label>Emitter Position</label>
+            <label for="emitterPosX">X <span id="emitterPosXVal"></span></label>
+            <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <label for="emitterPosY">Y <span id="emitterPosYVal"></span></label>
+            <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
+            <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+            <div class="inline-toggle">
+              <label for="emitterGizmo">Show Emitter Gizmo</label>
+              <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+            </div>
           </div>
           <div class="control rotation-group">
             <label>Emitter Rotation</label>
@@ -1909,25 +1910,24 @@
             </div>
           </div>
           <div class="control">
+            <label for="emissionDirection">Emission Direction</label>
+            <select id="emissionDirection">
+              <option value="directional">Directional</option>
+              <option value="outwards">Outwards</option>
+              <option value="bidirectional">Bi-directional</option>
+            </select>
+          </div>
+          <div class="control">
+            <label>Particle Velocity</label>
+            <label for="initialSpeed">Velocity <span id="initialSpeedVal"></span></label>
+            <input id="initialSpeed" type="range" min="0" max="3" step="0.1" data-default="1" />
+            <label for="speedRandom">Velocity Random <span id="speedRandomVal"></span></label>
+            <input id="speedRandom" type="range" min="0" max="1" step="0.05" data-default="0.2" />
+          </div>
+          </div>
+          <div class="control">
             <label for="coneAngle">Emission Angle <span id="coneAngleVal"></span></label>
             <input id="coneAngle" type="range" min="0" max="90" step="1" data-default="16" />
-          </div>
-          <div class="control">
-            <label for="emissionRate">Emission Rate <span id="emissionRateVal"></span></label>
-            <input id="emissionRate" type="range" min="0" max="20000" step="1" data-default="40" />
-          </div>
-          <div class="control">
-            <label>Emitter Position</label>
-            <label for="emitterPosX">X <span id="emitterPosXVal"></span></label>
-            <input id="emitterPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <label for="emitterPosY">Y <span id="emitterPosYVal"></span></label>
-            <input id="emitterPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <label for="emitterPosZ">Z <span id="emitterPosZVal"></span></label>
-            <input id="emitterPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-            <div class="inline-toggle">
-              <label for="emitterGizmo">Show Emitter Gizmo</label>
-              <button id="emitterGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-            </div>
           </div>
           <div class="control">
             <label>Particle Spin</label>

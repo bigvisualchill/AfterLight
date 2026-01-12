@@ -3994,11 +3994,18 @@ shadingToggle.addEventListener("click", () => {
 
 const emitterShapeSelect = document.getElementById("emitterShape");
 const emitterShapeControls = document.getElementById("emitterShapeControls");
-emitterShapeControls.style.display = emitterShape === "point" ? "none" : "";
+const emitterShapeOnlyControls = emitterShapeControls
+  ? emitterShapeControls.querySelectorAll(".shape-only")
+  : [];
+emitterShapeOnlyControls.forEach((control) => {
+  control.style.display = emitterShape === "point" ? "none" : "";
+});
 emitterShapeSelect.value = emitterShape;
 emitterShapeSelect.addEventListener("change", () => {
   emitterShape = emitterShapeSelect.value;
-  emitterShapeControls.style.display = emitterShape === "point" ? "none" : "";
+  emitterShapeOnlyControls.forEach((control) => {
+    control.style.display = emitterShape === "point" ? "none" : "";
+  });
 });
 
 const emitFromSelect = document.getElementById("emitFrom");
