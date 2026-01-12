@@ -161,6 +161,30 @@ let aperture = 7.0;
 let focusRange = 0.8;
 let dofEnabled = true;
 let cameraViewEnabled = false;
+
+// ============================================================================
+// Depth of Field Settings (Physically-Based Bokeh)
+// ============================================================================
+// User-controllable parameters (two sliders)
+let dofDepthSlider = 0.5;      // [0,1] - controls focus distance
+let dofApertureSlider = 0.3;   // [0,1] - controls aperture (blur amount)
+
+// CPU-side smoothing state
+let smoothedFocusZ = 6.0;
+
+// Hardcoded lens constants
+const DOF_FOCAL_LENGTH_MM = 35.0;   // 35mm lens
+const DOF_SENSOR_WIDTH_MM = 36.0;   // Full-frame sensor
+const DOF_BLADE_COUNT = 6;          // Hexagonal bokeh
+const DOF_F_MIN = 1.4;              // Maximum aperture (most blur)
+const DOF_F_MAX = 16.0;             // Minimum aperture (least blur)
+const DOF_NEAR_FOCUS = 0.5;         // Minimum focus distance
+const DOF_FAR_FOCUS = 25.0;         // Maximum focus distance
+const DOF_BASE_MAX_BLUR_PX = 18.0;  // Max blur radius at 1080p
+const DOF_FOCUS_SMOOTHING = 15.0;   // Smoothing rate
+
+// Debug mode toggle
+let dofDebugMode = false;
 let lightIntensity = 1.2;
 let lightPos = [0, 1, 0.3];
 let lightColor = [0.55, 0.74, 1.0];
@@ -1317,6 +1341,7 @@ function createParticlePipeline(mode, depthWriteEnabled = false, cullMode = "non
   });
 }
 
+// SDR pipelines (for non-DOF rendering)
 const particlePipelines = {
   alpha: createParticlePipeline("alpha"),
   additive: createParticlePipeline("additive"),
@@ -1342,6 +1367,88 @@ const particlePipelinesDepthCull = {
   multiply: createParticlePipeline("multiply", true, "back", "ccw"),
 };
 
+// HDR pipelines (for DOF rendering - renders to rgba16float)
+function createParticlePipelineHDR(mode, depthWriteEnabled = false, cullMode = "none", frontFace = "ccw") {
+  let blend;
+  if (mode === "additive") {
+    blend = {
+      color: { srcFactor: "src-alpha", dstFactor: "one", operation: "add" },
+      alpha: { srcFactor: "src-alpha", dstFactor: "one", operation: "add" },
+    };
+  } else if (mode === "screen") {
+    blend = {
+      color: { srcFactor: "one", dstFactor: "one-minus-src", operation: "add" },
+      alpha: { srcFactor: "one", dstFactor: "one-minus-src", operation: "add" },
+    };
+  } else if (mode === "multiply") {
+    blend = {
+      color: { srcFactor: "dst", dstFactor: "zero", operation: "add" },
+      alpha: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+    };
+  } else {
+    blend = {
+      color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+      alpha: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+    };
+  }
+  return device.createRenderPipeline({
+    layout: particlePipelineLayout,
+    vertex: {
+      module: particleModule,
+      entryPoint: "vs_main",
+      buffers: [
+        {
+          arrayStride: 36, // 9 floats: pos(3) + normal(3) + bary(3)
+          attributes: [
+            { shaderLocation: 0, format: "float32x3", offset: 0 },
+            { shaderLocation: 1, format: "float32x3", offset: 12 },
+            { shaderLocation: 11, format: "float32x3", offset: 24 }, // barycentric
+          ],
+        },
+        {
+          arrayStride: instanceStride,
+          stepMode: "instance",
+          attributes: [
+            { shaderLocation: 2, format: "float32x3", offset: 0 },
+            { shaderLocation: 3, format: "float32", offset: 12 },
+            { shaderLocation: 4, format: "float32", offset: 16 },
+            { shaderLocation: 5, format: "float32", offset: 20 },
+            { shaderLocation: 6, format: "float32x3", offset: 24 },
+            { shaderLocation: 7, format: "float32", offset: 36 },
+            { shaderLocation: 8, format: "float32x3", offset: 40 },
+            { shaderLocation: 9, format: "float32", offset: 52 },
+            { shaderLocation: 10, format: "float32x3", offset: 56 },
+          ],
+        },
+      ],
+    },
+    fragment: {
+      module: particleModule,
+      entryPoint: "fs_main",
+      targets: [{ format: "rgba16float", blend }],
+    },
+    primitive: { topology: "triangle-list", cullMode, frontFace },
+    depthStencil: {
+      format: "depth24plus",
+      depthWriteEnabled,
+      depthCompare: "less",
+    },
+  });
+}
+
+const particlePipelinesHDR = {
+  alpha: createParticlePipelineHDR("alpha", true),
+  additive: createParticlePipelineHDR("additive", true),
+  screen: createParticlePipelineHDR("screen", true),
+  multiply: createParticlePipelineHDR("multiply", true),
+};
+const particlePipelinesHDRCull = {
+  alpha: createParticlePipelineHDR("alpha", true, "back", "ccw"),
+  additive: createParticlePipelineHDR("additive", true, "back", "ccw"),
+  screen: createParticlePipelineHDR("screen", true, "back", "ccw"),
+  multiply: createParticlePipelineHDR("multiply", true, "back", "ccw"),
+};
+
 const bindGroup = device.createBindGroup({
   layout: particleBindGroupLayout,
   entries: [
@@ -1351,6 +1458,9 @@ const bindGroup = device.createBindGroup({
   ],
 });
 
+// ============================================================================
+// Multi-Pass DOF System Setup
+// ============================================================================
 const dofShaderCode = await (await fetch("./dof-shader.wgsl")).text();
 const dofModule = device.createShaderModule({ code: dofShaderCode });
 dofModule.getCompilationInfo().then((info) => {
@@ -1362,35 +1472,108 @@ dofModule.getCompilationInfo().then((info) => {
     console.groupEnd();
   }
 });
-const dofSampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
-const dofUniformBuffer = device.createBuffer({
-  size: 64,
+
+const dofLinearSampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+
+// Uniform buffers for each DOF pass (sizes must match shader struct alignment)
+const cocUniformBuffer = device.createBuffer({
+  size: 64, // CoCUniforms struct (48 bytes + padding for 16-byte alignment)
   usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
-const dofPipeline = device.createRenderPipeline({
+const blurUniformBuffer = device.createBuffer({
+  size: 48, // BlurUniforms struct (32 bytes + padding)
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+const compositeUniformBuffer = device.createBuffer({
+  size: 48, // CompositeUniforms struct (32 bytes + padding)
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+// Vertex buffer layout for fullscreen quad
+const dofVertexBufferLayout = {
+  arrayStride: 8,
+  attributes: [{ shaderLocation: 0, format: "float32x2", offset: 0 }],
+};
+
+// Pass 1: CoC Prepass Pipeline
+const cocPipeline = device.createRenderPipeline({
   layout: "auto",
   vertex: {
     module: dofModule,
-    entryPoint: "vs",
-    buffers: [
-      {
-        arrayStride: 8,
-        attributes: [{ shaderLocation: 0, format: "float32x2", offset: 0 }],
-      },
-    ],
+    entryPoint: "vs_coc",
+    buffers: [dofVertexBufferLayout],
   },
   fragment: {
     module: dofModule,
-    entryPoint: "fs",
+    entryPoint: "fs_coc",
+    targets: [{ format: "r16float" }],
+  },
+  primitive: { topology: "triangle-list" },
+});
+
+// Pass 2: Far Blur Pipeline
+const farBlurPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: dofModule,
+    entryPoint: "vs_blur",
+    buffers: [dofVertexBufferLayout],
+  },
+  fragment: {
+    module: dofModule,
+    entryPoint: "fs_blur_far",
+    targets: [{ format: "rgba16float" }],
+  },
+  primitive: { topology: "triangle-list" },
+});
+
+// Pass 3: Near Blur Pipeline
+const nearBlurPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: dofModule,
+    entryPoint: "vs_blur",
+    buffers: [dofVertexBufferLayout],
+  },
+  fragment: {
+    module: dofModule,
+    entryPoint: "fs_blur_near",
+    targets: [{ format: "rgba16float" }],
+  },
+  primitive: { topology: "triangle-list" },
+});
+
+// Pass 4: Composite + Tonemapping Pipeline
+const compositePipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: dofModule,
+    entryPoint: "vs_composite",
+    buffers: [dofVertexBufferLayout],
+  },
+  fragment: {
+    module: dofModule,
+    entryPoint: "fs_composite",
     targets: [{ format }],
   },
   primitive: { topology: "triangle-list" },
 });
 
-let colorTexture;
-let depthTexture;
-let dofBindGroup;
+// DOF Textures (created in resize)
+let hdrColorTexture;     // Scene rendered in HDR (rgba16float)
+let depthTexture;        // Depth buffer
+let cocTexture;          // Signed CoC texture (r16float)
+let farBlurTexture;      // Far blur result (rgba16float)
+let nearBlurTexture;     // Near blur result (rgba16float)
+
+// DOF Bind Groups (created in resize)
+let cocBindGroup;
+let farBlurBindGroup;
+let nearBlurBindGroup;
+let compositeBindGroup;
+
 let gizmoSize = { width: 0, height: 0, dpr: 1 };
+
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssWidth = canvas.clientWidth || window.innerWidth;
@@ -1406,25 +1589,96 @@ function resize() {
     gizmoCanvas.style.height = `${cssHeight}px`;
     gizmoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  if (colorTexture) colorTexture.destroy();
+  
+  // Destroy old textures
+  if (hdrColorTexture) hdrColorTexture.destroy();
   if (depthTexture) depthTexture.destroy();
-  colorTexture = device.createTexture({
+  if (cocTexture) cocTexture.destroy();
+  if (farBlurTexture) farBlurTexture.destroy();
+  if (nearBlurTexture) nearBlurTexture.destroy();
+  
+  // Create HDR color texture (scene renders here)
+  hdrColorTexture = device.createTexture({
     size: [canvas.width, canvas.height],
-    format,
+    format: "rgba16float",
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
+  
+  // Create depth texture
   depthTexture = device.createTexture({
     size: [canvas.width, canvas.height],
     format: "depth24plus",
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
-  dofBindGroup = device.createBindGroup({
-    layout: dofPipeline.getBindGroupLayout(0),
+  
+  // Create CoC texture (signed, r16float)
+  cocTexture = device.createTexture({
+    size: [canvas.width, canvas.height],
+    format: "r16float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  
+  // Create far blur texture at HALF resolution for performance (rgba16float)
+  const blurWidth = Math.max(1, Math.floor(canvas.width / 2));
+  const blurHeight = Math.max(1, Math.floor(canvas.height / 2));
+  farBlurTexture = device.createTexture({
+    size: [blurWidth, blurHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  
+  // Create near blur texture at HALF resolution for performance (rgba16float)
+  nearBlurTexture = device.createTexture({
+    size: [blurWidth, blurHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  
+  // Create bind groups for DOF passes
+  
+  // CoC Pass bind group
+  cocBindGroup = device.createBindGroup({
+    layout: cocPipeline.getBindGroupLayout(0),
     entries: [
-      { binding: 0, resource: colorTexture.createView() },
-      { binding: 1, resource: depthTexture.createView() },
-      { binding: 2, resource: dofSampler },
-      { binding: 3, resource: { buffer: dofUniformBuffer } },
+      { binding: 0, resource: depthTexture.createView() },
+      { binding: 1, resource: { buffer: cocUniformBuffer } },
+    ],
+  });
+  
+  // Far Blur Pass bind group
+  farBlurBindGroup = device.createBindGroup({
+    layout: farBlurPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: hdrColorTexture.createView() },
+      { binding: 1, resource: cocTexture.createView() },
+      { binding: 2, resource: depthTexture.createView() },
+      { binding: 3, resource: dofLinearSampler },
+      { binding: 4, resource: { buffer: blurUniformBuffer } },
+    ],
+  });
+  
+  // Near Blur Pass bind group
+  nearBlurBindGroup = device.createBindGroup({
+    layout: nearBlurPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: hdrColorTexture.createView() },
+      { binding: 1, resource: cocTexture.createView() },
+      { binding: 2, resource: depthTexture.createView() },
+      { binding: 3, resource: dofLinearSampler },
+      { binding: 4, resource: { buffer: blurUniformBuffer } },
+    ],
+  });
+  
+  // Composite Pass bind group
+  compositeBindGroup = device.createBindGroup({
+    layout: compositePipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: hdrColorTexture.createView() },
+      { binding: 1, resource: farBlurTexture.createView() },
+      { binding: 2, resource: nearBlurTexture.createView() },
+      { binding: 3, resource: cocTexture.createView() },
+      { binding: 4, resource: dofLinearSampler },
+      { binding: 5, resource: { buffer: compositeUniformBuffer } },
     ],
   });
 }
@@ -1436,7 +1690,10 @@ const proj = new Float32Array(16);
 const viewProj = new Float32Array(16);
 const invViewProj = new Float32Array(16);
 const uniformData = new Float32Array(52);
-const dofData = new Float32Array(16);
+// DOF uniform data arrays (sized to match buffer sizes / 4 bytes per float)
+const cocUniformData = new Float32Array(16);      // 64 bytes
+const blurUniformData = new Float32Array(12);     // 48 bytes
+const compositeUniformData = new Float32Array(12); // 48 bytes
 let instanceData = new Float32Array(particleCapacity * 17);
 
 const eye = [0, 0.4, 6];
@@ -3437,17 +3694,27 @@ bindRange("cameraPosZ", "cameraPosZVal", () => eye[2], (v) => {
   eye[2] = v;
   return eye[2];
 });
-bindRange("focusDepth", "focusDepthVal", () => focusOffset, (v) => {
-  focusOffset = Math.max(0.1, v);
-  return focusOffset;
+// DOF Two-Slider System
+bindRange("focusDepth", "focusDepthVal", () => dofDepthSlider, (v) => {
+  dofDepthSlider = Math.max(0, Math.min(1, v));
+  return dofDepthSlider;
 });
-bindRange("aperture", "apertureVal", () => aperture, (v) => {
-  aperture = Math.max(0, v);
-  return aperture;
+bindRange("aperture", "apertureVal", () => dofApertureSlider, (v) => {
+  dofApertureSlider = Math.max(0, Math.min(1, v));
+  return dofApertureSlider;
 });
+// Legacy focusRange binding (kept for compatibility but not used in new DOF)
 bindRange("focusRange", "focusRangeVal", () => focusRange, (v) => {
   focusRange = Math.max(0.1, v);
   return focusRange;
+});
+
+// Debug mode toggle (press D to toggle CoC visualization)
+document.addEventListener("keydown", (e) => {
+  if (e.key === "d" || e.key === "D") {
+    dofDebugMode = !dofDebugMode;
+    console.log("DOF Debug Mode:", dofDebugMode ? "ON (CoC visualization)" : "OFF");
+  }
 });
 bindRange("softness", "softnessVal", () => softness, (v) => {
   softness = Math.max(0, Math.min(1, v));
@@ -4657,19 +4924,11 @@ pointerTarget.addEventListener("pointercancel", (event) => {
 });
 
 let lastTime = performance.now();
-let smoothedDt = 1 / 60;
-const DT_SMOOTH = 0.12;
 function frame() {
   const now = performance.now();
-  const rawDt = Math.min(0.033, (now - lastTime) / 1000);
+  const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
   const cameraViewActive = cameraViewEnabled && dofEnabled;
-  if (cameraViewActive) {
-    smoothedDt = smoothedDt * (1 - DT_SMOOTH) + rawDt * DT_SMOOTH;
-  } else {
-    smoothedDt = rawDt;
-  }
-  const dt = cameraViewActive ? smoothedDt : rawDt;
   const frameMs = now - perfLastFrame;
   perfLastFrame = now;
   perfAccum += frameMs;
@@ -4849,30 +5108,82 @@ function frame() {
   if (focusNavigatorEnabled) {
     drawFocusNavigator();
   }
-  const focusDistance = Math.max(0.1, focusOffset);
-  if (cameraViewActive) {
-    dofData[0] = canvas.width;
-    dofData[1] = canvas.height;
-    dofData[2] = focusDistance;
-    dofData[3] = focusRange;
-    dofData[4] = aperture;
-    dofData[5] = 0.1;
-    dofData[6] = 50.0;
-    dofData[7] = 0;
-    dofData[8] = 0;
-    dofData[9] = 0;
-    dofData[10] = 0;
-    dofData[11] = 0;
-    dofData[12] = 0;
-    dofData[13] = 0;
-    dofData[14] = 0;
-    dofData[15] = 0;
-    device.queue.writeBuffer(dofUniformBuffer, 0, dofData);
+  
+  // Enable full DOF pipeline
+  const useDOF = true;
+  const useBlurPasses = true;
+  const useNearBlur = true; // Enable near blur for full quality
+  
+  // ============================================================================
+  // DOF Parameter Computation from Two Sliders
+  // ============================================================================
+  if (cameraViewActive && useDOF) {
+    // Compute focus distance from depthSlider with non-linear mapping
+    // More control at closer distances using power curve
+    const targetFocusZ = DOF_NEAR_FOCUS + (DOF_FAR_FOCUS - DOF_NEAR_FOCUS) * Math.pow(dofDepthSlider, 2.0);
+    
+    // Apply CPU-side temporal smoothing using the frame's dt
+    const smoothingFactor = 1.0 - Math.exp(-dt * DOF_FOCUS_SMOOTHING);
+    smoothedFocusZ = smoothedFocusZ + (targetFocusZ - smoothedFocusZ) * smoothingFactor;
+    
+    // Compute f-number from apertureSlider with logarithmic mapping
+    // apertureSlider=0 => f/16 (least blur), apertureSlider=1 => f/1.4 (most blur)
+    const lnFMin = Math.log(DOF_F_MIN);
+    const lnFMax = Math.log(DOF_F_MAX);
+    const fNumber = Math.exp(lnFMax + (lnFMin - lnFMax) * dofApertureSlider);
+    
+    // Compute resolution-aware max blur radius
+    const maxBlurPx = DOF_BASE_MAX_BLUR_PX * (canvas.height / 1080.0);
+    
+    // Update CoC uniforms
+    cocUniformData[0] = canvas.width;
+    cocUniformData[1] = canvas.height;
+    cocUniformData[2] = smoothedFocusZ;
+    cocUniformData[3] = fNumber;
+    cocUniformData[4] = DOF_FOCAL_LENGTH_MM;
+    cocUniformData[5] = DOF_SENSOR_WIDTH_MM;
+    cocUniformData[6] = 0.1;  // near
+    cocUniformData[7] = 50.0; // far
+    cocUniformData[8] = maxBlurPx;
+    cocUniformData[9] = 0;  // pad
+    cocUniformData[10] = 0; // pad
+    cocUniformData[11] = 0; // pad
+    device.queue.writeBuffer(cocUniformBuffer, 0, cocUniformData);
+    
+    // Update blur uniforms
+    blurUniformData[0] = canvas.width;
+    blurUniformData[1] = canvas.height;
+    blurUniformData[2] = maxBlurPx;
+    blurUniformData[3] = DOF_BLADE_COUNT;
+    blurUniformData[4] = 0; // isNearPass (0 = far)
+    blurUniformData[5] = 0.1;  // near
+    blurUniformData[6] = 50.0; // far
+    blurUniformData[7] = 0;    // pad
+    device.queue.writeBuffer(blurUniformBuffer, 0, blurUniformData);
+    
+    // Update composite uniforms
+    compositeUniformData[0] = canvas.width;
+    compositeUniformData[1] = canvas.height;
+    compositeUniformData[2] = maxBlurPx;
+    compositeUniformData[3] = 1.0;  // exposure
+    compositeUniformData[4] = dofDebugMode ? 1.0 : 0.0; // debug mode
+    compositeUniformData[5] = 0;    // pad
+    compositeUniformData[6] = 0;    // pad
+    compositeUniformData[7] = 0;    // pad
+    device.queue.writeBuffer(compositeUniformBuffer, 0, compositeUniformData);
+    
+    // Also update legacy values for focus navigator compatibility
+    focusOffset = smoothedFocusZ;
+    aperture = fNumber;
   }
 
   const encoder = device.createCommandEncoder();
-  const particleTargetView = cameraViewActive
-    ? colorTexture.createView()
+  
+  // ============================================================================
+  // Scene Render Pass (to HDR texture when DOF is active)
+  // ============================================================================
+  const particleTargetView = (cameraViewActive && useDOF)
+    ? hdrColorTexture.createView()
     : context.getCurrentTexture().createView();
   const particlePass = encoder.beginRenderPass({
     colorAttachments: [
@@ -4891,9 +5202,17 @@ function frame() {
     },
   });
   const useCull = particleShape === "cube" || particleShape === "sphere" || particleShape === "icosahedron";
-  const pipelineSet = cameraViewActive
-    ? (useCull ? particlePipelinesDepthCull : particlePipelinesDepth)
-    : (useCull ? particlePipelinesCull : particlePipelines);
+  // Use HDR pipelines when DOF is active (rendering to rgba16float), SDR pipelines otherwise
+  let pipelineSet;
+  // DEBUG: Temporarily disable HDR pipelines
+  if (cameraViewActive && useDOF) {
+    pipelineSet = useCull ? particlePipelinesHDRCull : particlePipelinesHDR;
+  } else if (cameraViewActive) {
+    // Camera view without DOF - use depth-enabled pipelines (original behavior)
+    pipelineSet = useCull ? particlePipelinesDepthCull : particlePipelinesDepth;
+  } else {
+    pipelineSet = useCull ? particlePipelinesCull : particlePipelines;
+  }
   const activePipeline = pipelineSet[blendMode] || pipelineSet.alpha;
   particlePass.setPipeline(activePipeline);
   particlePass.setBindGroup(0, bindGroup);
@@ -4904,22 +5223,73 @@ function frame() {
   }
   particlePass.end();
 
-  if (cameraViewActive) {
-    const dofPass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: context.getCurrentTexture().createView(),
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+  // ============================================================================
+  // Multi-Pass DOF System (when camera view is active)
+  // ============================================================================
+  if (cameraViewActive && useDOF) {
+    // Pass 1: CoC Prepass
+    const cocPass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: cocTexture.createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+    });
+    cocPass.setPipeline(cocPipeline);
+    cocPass.setBindGroup(0, cocBindGroup);
+    cocPass.setVertexBuffer(0, quadBuffer);
+    cocPass.draw(6);
+    cocPass.end();
+    
+    if (useBlurPasses) {
+      // Pass 2: Far Blur (background) - this is the main DOF effect
+      const farBlurPass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: farBlurTexture.createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
           loadOp: "clear",
           storeOp: "store",
-        },
-      ],
+        }],
+      });
+      farBlurPass.setPipeline(farBlurPipeline);
+      farBlurPass.setBindGroup(0, farBlurBindGroup);
+      farBlurPass.setVertexBuffer(0, quadBuffer);
+      farBlurPass.draw(6);
+      farBlurPass.end();
+      
+      // Pass 3: Near Blur (foreground) - optional, skip for better performance
+      if (useNearBlur) {
+        const nearBlurPass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: nearBlurTexture.createView(),
+            clearValue: { r: 0, g: 0, b: 0, a: 0 },
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+        });
+        nearBlurPass.setPipeline(nearBlurPipeline);
+        nearBlurPass.setBindGroup(0, nearBlurBindGroup);
+        nearBlurPass.setVertexBuffer(0, quadBuffer);
+        nearBlurPass.draw(6);
+        nearBlurPass.end();
+      }
+    }
+    
+    // Pass 4: Composite + Tonemapping (to final output)
+    const compositePass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: context.getCurrentTexture().createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
     });
-    dofPass.setPipeline(dofPipeline);
-    dofPass.setBindGroup(0, dofBindGroup);
-    dofPass.setVertexBuffer(0, quadBuffer);
-    dofPass.draw(6);
-    dofPass.end();
+    compositePass.setPipeline(compositePipeline);
+    compositePass.setBindGroup(0, compositeBindGroup);
+    compositePass.setVertexBuffer(0, quadBuffer);
+    compositePass.draw(6);
+    compositePass.end();
   }
   device.queue.submit([encoder.finish()]);
   if (perfHud && !perfGpuInFlight && now - perfLastGpuSample >= PERF_GPU_SAMPLE_MS) {

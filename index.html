@@ -2117,17 +2117,17 @@
               </div>
             </div>
             <div class="control">
-              <label>Focus</label>
-              <label for="focusDepth">Depth <span id="focusDepthVal"></span></label>
-              <input id="focusDepth" type="range" min="0.1" max="20" step="0.1" data-default="6" />
-              <label for="focusRange">Range <span id="focusRangeVal"></span></label>
-              <input id="focusRange" type="range" min="0.1" max="3" step="0.1" data-default="0.8" />
-              <label for="aperture">Aperture <span id="apertureVal"></span></label>
-              <input id="aperture" type="range" min="0" max="100" step="0.1" data-default="7" />
+              <label>Depth of Field</label>
+              <label for="focusDepth">Focus Distance <span id="focusDepthVal"></span></label>
+              <input id="focusDepth" type="range" min="0" max="1" step="0.01" data-default="0.5" />
+              <label for="aperture">Aperture (Blur Amount) <span id="apertureVal"></span></label>
+              <input id="aperture" type="range" min="0" max="1" step="0.01" data-default="0.3" />
               <div class="inline-toggle">
                 <label for="focusNavigator">Focus Navigator</label>
                 <button id="focusNavigator" class="pill-toggle" type="button" data-state="off">Off</button>
               </div>
+              <!-- Hidden legacy control for compatibility -->
+              <input id="focusRange" type="hidden" value="0.8" />
             </div>
             </div>
           </div>
