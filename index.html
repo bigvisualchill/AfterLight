@@ -230,6 +230,36 @@
         border-color: rgba(245, 158, 11, 0.7);
         color: #fcd34d;
       }
+      /* Animation - Lime */
+      .sidebar-btn[data-panel="animation"] {
+        background: rgba(132, 204, 22, 0.2);
+        border-color: rgba(132, 204, 22, 0.5);
+        color: #a3e635;
+      }
+      .sidebar-btn[data-panel="animation"]:hover {
+        background: rgba(132, 204, 22, 0.3);
+        border-color: rgba(132, 204, 22, 0.6);
+      }
+      .sidebar-btn[data-panel="animation"].active {
+        background: rgba(132, 204, 22, 0.35);
+        border-color: rgba(132, 204, 22, 0.7);
+        color: #bef264;
+      }
+      /* Export - Cyan */
+      .sidebar-btn[data-panel="export"] {
+        background: rgba(6, 182, 212, 0.2);
+        border-color: rgba(6, 182, 212, 0.5);
+        color: #22d3ee;
+      }
+      .sidebar-btn[data-panel="export"]:hover {
+        background: rgba(6, 182, 212, 0.3);
+        border-color: rgba(6, 182, 212, 0.6);
+      }
+      .sidebar-btn[data-panel="export"].active {
+        background: rgba(6, 182, 212, 0.35);
+        border-color: rgba(6, 182, 212, 0.7);
+        color: #67e8f9;
+      }
       /* Panel container */
       .settings-panel-container {
         position: fixed;
@@ -296,6 +326,16 @@
         background: rgba(245, 158, 11, 0.2);
         border-color: rgba(245, 158, 11, 0.5);
       }
+      /* Animation - Lime */
+      .panel[data-panel="animation"] {
+        background: rgba(132, 204, 22, 0.2);
+        border-color: rgba(132, 204, 22, 0.5);
+      }
+      /* Export - Cyan */
+      .panel[data-panel="export"] {
+        background: rgba(6, 182, 212, 0.2);
+        border-color: rgba(6, 182, 212, 0.5);
+      }
       .panel-header {
         display: flex;
         align-items: center;
@@ -322,6 +362,12 @@
       }
       .panel[data-panel="background"] .panel-header {
         border-bottom-color: rgba(245, 158, 11, 0.4);
+      }
+      .panel[data-panel="animation"] .panel-header {
+        border-bottom-color: rgba(132, 204, 22, 0.4);
+      }
+      .panel[data-panel="export"] .panel-header {
+        border-bottom-color: rgba(6, 182, 212, 0.4);
       }
       /* Colored collapse indicators */
       .panel[data-panel="particles"] .collapse-indicator {
@@ -371,6 +417,95 @@
       .panel[data-panel="background"] .collapse-indicator:hover {
         border-color: rgba(245, 158, 11, 0.7);
         background: rgba(245, 158, 11, 0.15);
+      }
+      .panel[data-panel="animation"] .collapse-indicator {
+        border-color: rgba(132, 204, 22, 0.5);
+        color: rgba(132, 204, 22, 0.9);
+      }
+      .panel[data-panel="animation"] .collapse-indicator:hover {
+        border-color: rgba(132, 204, 22, 0.7);
+        background: rgba(132, 204, 22, 0.15);
+      }
+      .panel[data-panel="export"] .collapse-indicator {
+        border-color: rgba(6, 182, 212, 0.5);
+        color: rgba(6, 182, 212, 0.9);
+      }
+      .panel[data-panel="export"] .collapse-indicator:hover {
+        border-color: rgba(6, 182, 212, 0.7);
+        background: rgba(6, 182, 212, 0.15);
+      }
+      /* Export action buttons */
+      .export-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 16px;
+        background: rgba(6, 182, 212, 0.15);
+        border: 2px solid rgba(6, 182, 212, 0.5);
+        border-radius: 8px;
+        color: #22d3ee;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 150ms ease;
+      }
+      .export-btn:hover {
+        background: rgba(6, 182, 212, 0.25);
+        border-color: rgba(6, 182, 212, 0.7);
+      }
+      .export-btn:active {
+        background: rgba(6, 182, 212, 0.35);
+        transform: scale(0.98);
+      }
+      .export-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .export-btn svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+      .export-btn.recording {
+        background: rgba(239, 68, 68, 0.25);
+        border-color: rgba(239, 68, 68, 0.7);
+        color: #f87171;
+        animation: recording-pulse 1.5s ease-in-out infinite;
+      }
+      @keyframes recording-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      .export-btn-row {
+        display: flex;
+        gap: 8px;
+      }
+      .export-btn-row .export-btn {
+        flex: 1;
+      }
+      .export-status {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.7);
+        text-align: center;
+        padding: 4px 0;
+        min-height: 20px;
+      }
+      .export-progress {
+        width: 100%;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 4px;
+      }
+      .export-progress-bar {
+        height: 100%;
+        background: #22d3ee;
+        border-radius: 2px;
+        transition: width 100ms ease;
+        width: 0%;
       }
       .panel-header span {
         font-weight: 600;
@@ -834,7 +969,10 @@
         #curlControls:has(.expanded) > .setting:not(.expanded),
         #vortexControls:has(.expanded) > .setting:not(.expanded),
         #attractorControls:has(.expanded) > .setting:not(.expanded),
-        #groundControls:has(.expanded) > .setting:not(.expanded) {
+        #groundControls:has(.expanded) > .setting:not(.expanded),
+        #emitterAnimControls:has(.expanded) > .setting:not(.expanded),
+        #vortexAnimControls:has(.expanded) > .setting:not(.expanded),
+        #attractorAnimControls:has(.expanded) > .setting:not(.expanded) {
           display: none !important;
         }
         
@@ -873,6 +1011,14 @@
         .panel[data-panel="background"] > .panel-content > .control {
           border-color: rgba(245, 158, 11, 0.3);
           background: rgba(245, 158, 11, 0.08);
+        }
+        .panel[data-panel="animation"] > .panel-content > .control {
+          border-color: rgba(132, 204, 22, 0.3);
+          background: rgba(132, 204, 22, 0.08);
+        }
+        .panel[data-panel="export"] > .panel-content > .control {
+          border-color: rgba(6, 182, 212, 0.3);
+          background: rgba(6, 182, 212, 0.08);
         }
         /* Nested controls (inside control-body, control-stack) - no panel styling */
         .control-body .control,
@@ -1049,6 +1195,14 @@
           color: rgba(245, 158, 11, 0.95);
           border-color: rgba(245, 158, 11, 0.7);
         }
+        .panel[data-panel="animation"] .pill-toggle[data-state="on"] {
+          color: rgba(132, 204, 22, 0.95);
+          border-color: rgba(132, 204, 22, 0.7);
+        }
+        .panel[data-panel="export"] .pill-toggle[data-state="on"] {
+          color: rgba(6, 182, 212, 0.95);
+          border-color: rgba(6, 182, 212, 0.7);
+        }
         
         /* Curve editors - visible size */
         .curve-editor {
@@ -1139,6 +1293,14 @@
           border-color: rgba(245, 158, 11, 0.3);
           background: rgba(245, 158, 11, 0.08);
         }
+        .panel[data-panel="animation"] .control-stack {
+          border-color: rgba(132, 204, 22, 0.3);
+          background: rgba(132, 204, 22, 0.08);
+        }
+        .panel[data-panel="export"] .control-stack {
+          border-color: rgba(6, 182, 212, 0.3);
+          background: rgba(6, 182, 212, 0.08);
+        }
         
         /* Select controls with adjacent buttons */
         .select-control {
@@ -1180,6 +1342,10 @@
         .panel[data-panel="background"] .select-control {
           border-color: rgba(245, 158, 11, 0.3);
           background: rgba(245, 158, 11, 0.08);
+        }
+        .panel[data-panel="animation"] .select-control {
+          border-color: rgba(132, 204, 22, 0.3);
+          background: rgba(132, 204, 22, 0.08);
         }
         
         /* Editable values - touch-friendly inline display */
@@ -1297,6 +1463,10 @@
         .panel[data-panel="camera"] .setting {
           border-color: rgba(20, 184, 166, 0.3);
           background: rgba(20, 184, 166, 0.08);
+        }
+        .panel[data-panel="animation"] .setting {
+          border-color: rgba(132, 204, 22, 0.3);
+          background: rgba(132, 204, 22, 0.08);
         }
         /* Nested settings inside control-body shouldn't have panel styling */
         .control-body .setting,
@@ -1587,6 +1757,64 @@
           background: rgba(12, 10, 6, 0.45);
         }
         
+        /* Animation - Lime */
+        .panel[data-panel="animation"] label {
+          color: rgba(132, 204, 22, 0.95);
+        }
+        .panel[data-panel="animation"] input[type="range"],
+        .panel[data-panel="animation"] input[type="color"],
+        .panel[data-panel="animation"] select,
+        .panel[data-panel="animation"] .direction-wheel,
+        .panel[data-panel="animation"] .reset-btn,
+        .panel[data-panel="animation"] .pill-toggle,
+        .panel[data-panel="animation"] .curve-editor,
+        .panel[data-panel="animation"] .gradient-editor,
+        .panel[data-panel="animation"] .editable-value {
+          border-color: rgba(132, 204, 22, 0.5);
+        }
+        .panel[data-panel="animation"] input[type="range"]::-webkit-slider-thumb,
+        .panel[data-panel="animation"] input[type="range"]::-moz-range-thumb,
+        .panel[data-panel="animation"] .direction-wheel-dot {
+          border-color: rgba(132, 204, 22, 0.8);
+        }
+        .panel[data-panel="animation"] .editable-value {
+          color: rgba(132, 204, 22, 0.95);
+        }
+        .panel[data-panel="animation"] .collapse-indicator {
+          border-color: rgba(132, 204, 22, 0.5);
+          color: rgba(132, 204, 22, 0.9);
+        }
+        .panel[data-panel="animation"] .collapse-indicator:hover {
+          border-color: rgba(132, 204, 22, 0.7);
+          background: rgba(132, 204, 22, 0.15);
+        }
+        .panel[data-panel="animation"] select {
+          color: rgba(240, 255, 220, 0.98);
+          -webkit-text-fill-color: rgba(240, 255, 220, 0.98);
+          background: rgba(8, 12, 6, 0.45);
+        }
+        
+        /* Export - Cyan */
+        .panel[data-panel="export"] label {
+          color: rgba(6, 182, 212, 0.95);
+        }
+        .panel[data-panel="export"] input[type="range"],
+        .panel[data-panel="export"] .export-btn {
+          border-color: rgba(6, 182, 212, 0.5);
+        }
+        .panel[data-panel="export"] input[type="range"]::-webkit-slider-thumb,
+        .panel[data-panel="export"] input[type="range"]::-moz-range-thumb {
+          border-color: rgba(6, 182, 212, 0.8);
+        }
+        .panel[data-panel="export"] .collapse-indicator {
+          border-color: rgba(6, 182, 212, 0.5);
+          color: rgba(6, 182, 212, 0.9);
+        }
+        .panel[data-panel="export"] .collapse-indicator:hover {
+          border-color: rgba(6, 182, 212, 0.7);
+          background: rgba(6, 182, 212, 0.15);
+        }
+        
         /* Focus Navigator - smaller on mobile */
         .focus-navigator {
           width: 150px;
@@ -1749,6 +1977,24 @@
           <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
         </svg>
       </button>
+      <button class="sidebar-btn" data-panel="animation" title="Animation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M4 12h2"/>
+          <path d="M18 12h2"/>
+          <path d="M12 4v2"/>
+          <path d="M12 18v2"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 12l4-4" stroke-dasharray="2 2"/>
+          <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="sidebar-btn" data-panel="export" title="Export">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
       <button id="fullscreenToggle" class="sidebar-btn fullscreen" title="Fullscreen" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
           <path d="M8 3H3v5"/>
@@ -1799,6 +2045,8 @@
             <label>Particle Size</label>
             <label for="particleSize">Size <span id="particleSizeVal"></span></label>
             <input id="particleSize" type="range" min="1" max="100" step="1" data-default="1" />
+            <label for="sizeRandom">Size Random <span id="sizeRandomVal"></span></label>
+            <input id="sizeRandom" type="range" min="0" max="1" step="0.05" data-default="0" />
             <label for="sizeCurveCanvas">Size Curve</label>
             <canvas id="sizeCurveCanvas" class="curve-editor" width="240" height="90"></canvas>
           </div>
@@ -2273,6 +2521,319 @@
               <label for="bgRadialCenterY">Y <span id="bgRadialCenterYVal">0.5</span></label>
               <input id="bgRadialCenterY" type="range" min="0" max="1" step="0.01" value="0.5" />
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" data-panel="animation">
+        <div class="panel-header">
+          <span>Animation</span>
+        </div>
+        <div class="panel-content">
+          <!-- Emitter Animation -->
+          <div class="control setting" id="emitterAnimSetting">
+            <label>
+              <span class="label-left">
+                <button class="collapse-indicator"><span>+</span></button>
+                Emitter Animation
+              </span>
+              <button id="emitterAnimEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </label>
+            <div class="control-body" id="emitterAnimControls">
+              <div class="control setting" id="emitterVelocitySetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Velocity Affected
+                  </span>
+                  <button id="emitterVelocityAffected" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="emitterVelocityAmount">Amount <span id="emitterVelocityAmountVal">1.0</span></label>
+                  <input id="emitterVelocityAmount" type="range" min="0" max="3" step="0.1" value="1.0" />
+                </div>
+              </div>
+              <div class="control setting" id="emitterAnimXSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    X Axis
+                  </span>
+                  <button id="emitterAnimX" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="emitterAnimXSpeed">Speed <span id="emitterAnimXSpeedVal">1.0</span></label>
+                  <input id="emitterAnimXSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="emitterAnimXType">Motion Type</label>
+                  <select id="emitterAnimXType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="emitterAnimYSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Y Axis
+                  </span>
+                  <button id="emitterAnimY" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="emitterAnimYSpeed">Speed <span id="emitterAnimYSpeedVal">1.0</span></label>
+                  <input id="emitterAnimYSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="emitterAnimYType">Motion Type</label>
+                  <select id="emitterAnimYType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="emitterAnimZSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Z Axis
+                  </span>
+                  <button id="emitterAnimZ" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="emitterAnimZSpeed">Speed <span id="emitterAnimZSpeedVal">1.0</span></label>
+                  <input id="emitterAnimZSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="emitterAnimZType">Motion Type</label>
+                  <select id="emitterAnimZType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vortex Animation -->
+          <div class="control setting" id="vortexAnimSetting">
+            <label>
+              <span class="label-left">
+                <button class="collapse-indicator"><span>+</span></button>
+                Vortex Animation
+              </span>
+              <button id="vortexAnimEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </label>
+            <div class="control-body" id="vortexAnimControls">
+              <div class="control setting" id="vortexAnimXSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    X Axis
+                  </span>
+                  <button id="vortexAnimX" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="vortexAnimXSpeed">Speed <span id="vortexAnimXSpeedVal">1.0</span></label>
+                  <input id="vortexAnimXSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="vortexAnimXType">Motion Type</label>
+                  <select id="vortexAnimXType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="vortexAnimYSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Y Axis
+                  </span>
+                  <button id="vortexAnimY" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="vortexAnimYSpeed">Speed <span id="vortexAnimYSpeedVal">1.0</span></label>
+                  <input id="vortexAnimYSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="vortexAnimYType">Motion Type</label>
+                  <select id="vortexAnimYType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="vortexAnimZSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Z Axis
+                  </span>
+                  <button id="vortexAnimZ" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="vortexAnimZSpeed">Speed <span id="vortexAnimZSpeedVal">1.0</span></label>
+                  <input id="vortexAnimZSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="vortexAnimZType">Motion Type</label>
+                  <select id="vortexAnimZType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attractor Animation -->
+          <div class="control setting" id="attractorAnimSetting">
+            <label>
+              <span class="label-left">
+                <button class="collapse-indicator"><span>+</span></button>
+                Attractor Animation
+              </span>
+              <button id="attractorAnimEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+            </label>
+            <div class="control-body" id="attractorAnimControls">
+              <div class="control setting" id="attractorAnimXSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    X Axis
+                  </span>
+                  <button id="attractorAnimX" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="attractorAnimXSpeed">Speed <span id="attractorAnimXSpeedVal">1.0</span></label>
+                  <input id="attractorAnimXSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="attractorAnimXType">Motion Type</label>
+                  <select id="attractorAnimXType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="attractorAnimYSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Y Axis
+                  </span>
+                  <button id="attractorAnimY" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="attractorAnimYSpeed">Speed <span id="attractorAnimYSpeedVal">1.0</span></label>
+                  <input id="attractorAnimYSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="attractorAnimYType">Motion Type</label>
+                  <select id="attractorAnimYType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control setting" id="attractorAnimZSetting">
+                <label>
+                  <span class="label-left">
+                    <button class="collapse-indicator"><span>+</span></button>
+                    Z Axis
+                  </span>
+                  <button id="attractorAnimZ" class="pill-toggle" type="button" data-state="off">Off</button>
+                </label>
+                <div class="control-body">
+                  <label for="attractorAnimZSpeed">Speed <span id="attractorAnimZSpeedVal">1.0</span></label>
+                  <input id="attractorAnimZSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+                  <label for="attractorAnimZType">Motion Type</label>
+                  <select id="attractorAnimZType">
+                    <option value="sine">Sine</option>
+                    <option value="bounce">Bounce</option>
+                    <option value="noise">Noise</option>
+                    <option value="random">Random</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" data-panel="export">
+        <div class="panel-header">
+          <span>Export</span>
+        </div>
+        <div class="panel-content">
+          <div class="control">
+            <label>Video Recording</label>
+            <label for="videoFormat">Format</label>
+            <select id="videoFormat">
+              <option value="webm">WebM (VP9)</option>
+              <option value="mp4">MP4 (H.264)</option>
+            </select>
+            <button id="recordVideoBtn" class="export-btn" type="button">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="8"/>
+              </svg>
+              <span>Start Recording</span>
+            </button>
+            <div id="recordingStatus" class="export-status"></div>
+          </div>
+          <div class="control">
+            <label>GIF Export</label>
+            <label for="gifDuration">Duration (seconds) <span id="gifDurationVal">3</span></label>
+            <input id="gifDuration" type="range" min="1" max="10" step="0.5" value="3" />
+            <label for="gifFps">Frame Rate <span id="gifFpsVal">30</span></label>
+            <input id="gifFps" type="range" min="10" max="60" step="5" value="30" />
+            <button id="exportGifBtn" class="export-btn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M9 9h.01M15 9h.01M9 15h6"/>
+              </svg>
+              <span>Export GIF</span>
+            </button>
+            <div id="gifStatus" class="export-status"></div>
+            <div id="gifProgress" class="export-progress" style="display: none;">
+              <div id="gifProgressBar" class="export-progress-bar"></div>
+            </div>
+          </div>
+          <div class="control">
+            <label>Presets</label>
+            <div class="export-btn-row">
+              <button id="savePresetBtn" class="export-btn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                <span>Save</span>
+              </button>
+              <button id="loadPresetBtn" class="export-btn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                <span>Load</span>
+              </button>
+            </div>
+            <input type="file" id="presetFileInput" accept=".json" style="display: none;" />
+          </div>
+          <div class="control">
+            <label>Standalone Export</label>
+            <button id="exportStandaloneBtn" class="export-btn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+              <span>Export HTML</span>
+            </button>
+            <div class="export-status">Self-contained player file</div>
           </div>
         </div>
       </div>

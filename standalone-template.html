@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle System</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 100%; 
+      height: 100%; 
+      overflow: hidden;
+      background: #000;
+    }
+    canvas { 
+      display: block; 
+      width: 100%; 
+      height: 100%;
+    }
+    #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #f87171;
+      font-family: system-ui, sans-serif;
+      text-align: center;
+      padding: 20px;
+      max-width: 400px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="error" style="display: none;"></div>
+  
+  <script>
+    // Preset settings injected during export
+    /* SETTINGS_PLACEHOLDER */
+    
+    // Use preset settings or defaults
+    const settings = typeof PRESET_SETTINGS !== 'undefined' ? PRESET_SETTINGS : {
+      emissionRate: 40,
+      initialSpeed: 1.0,
+      lifeSeconds: 2.0,
+      particleSize: 1.0,
+      particleOpacity: 1.0,
+      bgMode: "solid",
+      bgSolidColor: [0, 0, 0]
+    };
+
+    // Simple 3D particle system using WebGPU
+    (async function() {
+      const canvas = document.getElementById('canvas');
+      const errorEl = document.getElementById('error');
+      
+      function showError(msg) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = msg;
+      }
+
+      window.addEventListener('error', (e) => {
+        const message = e?.error?.message || e?.message || 'Unknown error';
+        showError(`Error:\n${message}`);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        const reason = e?.reason;
+        const message = reason?.message || String(reason || 'Unknown error');
+        showError(`Error:\n${message}`);
+      });
+
+      if (location.protocol === 'file:' || !window.isSecureContext) {
+        showError(
+          'This WebGPU demo must be served from a secure context.\n' +
+            'Open it via http://localhost (or https), not as a file.\n\n' +
+            'Tip: run `node server.js` in this folder and visit:\n' +
+            'http://localhost:5173/'
+        );
+        return;
+      }
+
+      // Check WebGPU support
+      if (!navigator.gpu) {
+        showError(
+          'WebGPU is not available in this browser.\n' +
+            'Try Safari Technology Preview (enable WebGPU) or Chrome/Edge.'
+        );
+        return;
+      }
+
+      let device;
+      let context;
+      let format;
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          showError('Failed to get a WebGPU adapter.');
+          return;
+        }
+
+        device = await adapter.requestDevice();
+        context = canvas.getContext('webgpu');
+        if (!context) {
+          showError('Failed to create a WebGPU canvas context.');
+          return;
+        }
+
+        format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({
+          device,
+          format,
+          alphaMode: 'premultiplied'
+        });
+      } catch (err) {
+        const message = err && typeof err === 'object' && 'message' in err ? err.message : String(err);
+        showError(`Failed to start WebGPU.\n${message}`);
+        return;
+      }
+
+      // Resize handler
+      function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.clientWidth * dpr;
+        canvas.height = canvas.clientHeight * dpr;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      // Particle shader
+      const shaderCode = `
+        struct Uniforms {
+          viewProj: mat4x4f,
+          time: f32,
+          particleSize: f32,
+          opacity: f32,
+          _pad: f32,
+        }
+
+        @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+        struct VertexInput {
+          @location(0) position: vec2f,
+          @location(1) particlePos: vec3f,
+          @location(2) particleColor: vec4f,
+          @location(3) particleData: vec4f, // age, life, size, _
+        }
+
+        struct VertexOutput {
+          @builtin(position) position: vec4f,
+          @location(0) color: vec4f,
+          @location(1) uv: vec2f,
+          @location(2) age: f32,
+        }
+
+        @vertex
+        fn vs_main(input: VertexInput) -> VertexOutput {
+          var output: VertexOutput;
+          
+          let age = input.particleData.x;
+          let life = input.particleData.y;
+          let size = input.particleData.z * uniforms.particleSize;
+          let t = age / life;
+          
+          // Billboard quad
+          let worldPos = vec4f(
+            input.particlePos.x + input.position.x * size,
+            input.particlePos.y + input.position.y * size,
+            input.particlePos.z,
+            1.0
+          );
+          
+          output.position = uniforms.viewProj * worldPos;
+          output.color = input.particleColor;
+          output.uv = input.position * 0.5 + 0.5;
+          output.age = t;
+          
+          return output;
+        }
+
+        @fragment
+        fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+          // Circular particle
+          let dist = length(input.uv - vec2f(0.5));
+          if (dist > 0.5) {
+            discard;
+          }
+          
+          let edge = smoothstep(0.5, 0.3, dist);
+          let fadeOut = 1.0 - input.age;
+          let alpha = input.color.a * edge * fadeOut * uniforms.opacity;
+          
+          return vec4f(input.color.rgb * alpha, alpha);
+        }
+      `;
+
+      const shaderModule = device.createShaderModule({ code: shaderCode });
+
+      // Create uniform buffer
+      const uniformBuffer = device.createBuffer({
+        size: 80, // mat4x4 (64) + 4 floats (16)
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+      });
+
+      // Quad vertices
+      const quadVerts = new Float32Array([
+        -1, -1, 1, -1, -1, 1,
+        -1, 1, 1, -1, 1, 1
+      ]);
+      const quadBuffer = device.createBuffer({
+        size: quadVerts.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+      });
+      device.queue.writeBuffer(quadBuffer, 0, quadVerts);
+
+      // Instance buffer (will grow as needed)
+      let maxParticles = 10000;
+      let instanceBuffer = device.createBuffer({
+        size: maxParticles * 40, // 10 floats per particle
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+      });
+
+      // Pipeline
+      const pipeline = device.createRenderPipeline({
+        layout: 'auto',
+        vertex: {
+          module: shaderModule,
+          entryPoint: 'vs_main',
+          buffers: [
+            {
+              arrayStride: 8,
+              stepMode: 'vertex',
+              attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
+            },
+            {
+              arrayStride: 40,
+              stepMode: 'instance',
+              attributes: [
+                { shaderLocation: 1, offset: 0, format: 'float32x3' },  // position
+                { shaderLocation: 2, offset: 12, format: 'float32x4' }, // color
+                { shaderLocation: 3, offset: 28, format: 'float32x4' }  // data
+              ]
+            }
+          ]
+        },
+        fragment: {
+          module: shaderModule,
+          entryPoint: 'fs_main',
+          targets: [{
+            format,
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }
+            }
+          }]
+        },
+        primitive: { topology: 'triangle-list' }
+      });
+
+      const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+      });
+
+      // Particles array
+      let particles = [];
+      let spawnAccum = 0;
+
+      // Helper functions
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function evalCurve(points, t) {
+        if (!points || points.length === 0) return 1;
+        if (t <= points[0].x) return points[0].y;
+        if (t >= points[points.length - 1].x) return points[points.length - 1].y;
+        
+        for (let i = 0; i < points.length - 1; i++) {
+          if (t >= points[i].x && t <= points[i + 1].x) {
+            const localT = (t - points[i].x) / (points[i + 1].x - points[i].x);
+            return points[i].y + (points[i + 1].y - points[i].y) * localT;
+          }
+        }
+        return 1;
+      }
+
+      function sampleGradient(points, t) {
+        if (!points || points.length === 0) return [1, 1, 1];
+        if (t <= points[0].pos) return points[0].color;
+        if (t >= points[points.length - 1].pos) return points[points.length - 1].color;
+        
+        for (let i = 0; i < points.length - 1; i++) {
+          if (t >= points[i].pos && t <= points[i + 1].pos) {
+            const localT = (t - points[i].pos) / (points[i + 1].pos - points[i].pos);
+            return [
+              points[i].color[0] + (points[i + 1].color[0] - points[i].color[0]) * localT,
+              points[i].color[1] + (points[i + 1].color[1] - points[i].color[1]) * localT,
+              points[i].color[2] + (points[i + 1].color[2] - points[i].color[2]) * localT
+            ];
+          }
+        }
+        return [1, 1, 1];
+      }
+
+      // Spawn particle
+      function spawnParticle() {
+        const spreadX = settings.emitterSize || 0.2;
+        const spreadY = settings.emitterSize || 0.2;
+        const spreadZ = settings.emitterSize || 0.2;
+        
+        const pos = [
+          (settings.emitterPos?.[0] || 0) + rand(-spreadX, spreadX),
+          (settings.emitterPos?.[1] || 0) + rand(-spreadY, spreadY),
+          (settings.emitterPos?.[2] || 0) + rand(-spreadZ, spreadZ)
+        ];
+        
+        const speed = (settings.initialSpeed || 1) * (1 + rand(-0.2, 0.2));
+        const angle = rand(0, Math.PI * 2);
+        const pitch = rand(-0.5, 0.5);
+        
+        const vel = [
+          Math.cos(angle) * Math.cos(pitch) * speed * 0.3,
+          speed * 0.5 + Math.random() * speed * 0.5,
+          Math.sin(angle) * Math.cos(pitch) * speed * 0.3
+        ];
+        
+        const life = (settings.lifeSeconds || 2) * (1 + rand(-(settings.lifeRandom || 0), settings.lifeRandom || 0));
+        const size = 1 + rand(-(settings.sizeRandom || 0), settings.sizeRandom || 0);
+        
+        particles.push({
+          pos,
+          vel,
+          age: 0,
+          life: Math.max(0.1, life),
+          size: Math.max(0.1, size)
+        });
+      }
+
+      // Animation
+      let lastTime = performance.now();
+      let time = 0;
+
+      function frame() {
+        const now = performance.now();
+        const dt = Math.min(0.033, (now - lastTime) / 1000);
+        lastTime = now;
+        time += dt;
+
+        // Spawn particles
+        spawnAccum += (settings.emissionRate || 40) * dt;
+        while (spawnAccum >= 1) {
+          spawnAccum--;
+          spawnParticle();
+        }
+
+        // Update particles
+        const gravity = settings.gravity !== undefined ? settings.gravity : -2;
+        const drag = settings.drag || 0;
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.age += dt;
+          
+          if (p.age >= p.life) {
+            particles.splice(i, 1);
+            continue;
+          }
+          
+          // Apply gravity
+          p.vel[1] += gravity * dt;
+          
+          // Apply drag
+          if (drag > 0) {
+            p.vel[0] *= (1 - drag * dt);
+            p.vel[1] *= (1 - drag * dt);
+            p.vel[2] *= (1 - drag * dt);
+          }
+          
+          // Update position
+          p.pos[0] += p.vel[0] * dt;
+          p.pos[1] += p.vel[1] * dt;
+          p.pos[2] += p.vel[2] * dt;
+          
+          // Ground bounce
+          if (settings.groundEnabled !== false && p.pos[1] < (settings.groundLevel || -1)) {
+            p.pos[1] = settings.groundLevel || -1;
+            p.vel[1] *= -(settings.bounce || 0.2);
+          }
+        }
+
+        // Build instance data
+        const instanceData = new Float32Array(particles.length * 10);
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const t = p.age / p.life;
+          
+          // Get color from gradient
+          let color;
+          if (settings.particleColorMode === 'solid' && settings.solidColor) {
+            color = settings.solidColor;
+          } else if (settings.colorGradientPoints) {
+            color = sampleGradient(settings.colorGradientPoints, t);
+          } else {
+            color = [1, 1, 1];
+          }
+          
+          // Get size from curve
+          const sizeT = settings.sizeCurvePoints ? evalCurve(settings.sizeCurvePoints, t) : 1;
+          const opacity = settings.opacityCurvePoints ? evalCurve(settings.opacityCurvePoints, t) : 1;
+          
+          const idx = i * 10;
+          instanceData[idx + 0] = p.pos[0];
+          instanceData[idx + 1] = p.pos[1];
+          instanceData[idx + 2] = p.pos[2];
+          instanceData[idx + 3] = color[0];
+          instanceData[idx + 4] = color[1];
+          instanceData[idx + 5] = color[2];
+          instanceData[idx + 6] = opacity;
+          instanceData[idx + 7] = p.age;
+          instanceData[idx + 8] = p.life;
+          instanceData[idx + 9] = p.size * sizeT;
+        }
+
+        // Resize buffer if needed
+        if (particles.length > maxParticles) {
+          maxParticles = particles.length * 2;
+          instanceBuffer = device.createBuffer({
+            size: maxParticles * 40,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+          });
+        }
+        
+        if (particles.length > 0) {
+          device.queue.writeBuffer(instanceBuffer, 0, instanceData);
+        }
+
+        // Camera
+        const aspect = canvas.width / canvas.height;
+        const fov = Math.PI / 4;
+        const near = 0.1;
+        const far = 100;
+        
+        const f = 1 / Math.tan(fov / 2);
+        const proj = new Float32Array([
+          f / aspect, 0, 0, 0,
+          0, f, 0, 0,
+          0, 0, (far + near) / (near - far), -1,
+          0, 0, (2 * far * near) / (near - far), 0
+        ]);
+        
+        const camZ = 6;
+        const view = new Float32Array([
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, -camZ, 1
+        ]);
+        
+        // Multiply view * proj (simplified)
+        const viewProj = new Float32Array(16);
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 4; j++) {
+            viewProj[i * 4 + j] = 0;
+            for (let k = 0; k < 4; k++) {
+              viewProj[i * 4 + j] += view[i * 4 + k] * proj[k * 4 + j];
+            }
+          }
+        }
+
+        // Update uniforms
+        const uniformData = new Float32Array(20);
+        uniformData.set(viewProj, 0);
+        uniformData[16] = time;
+        uniformData[17] = (settings.particleSize || 1) * 0.1;
+        uniformData[18] = settings.particleOpacity || 1;
+        device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+
+        // Render
+        const encoder = device.createCommandEncoder();
+        
+        // Background color
+        let clearColor = { r: 0, g: 0, b: 0, a: 1 };
+        if (settings.bgSolidColor) {
+          clearColor = {
+            r: settings.bgSolidColor[0],
+            g: settings.bgSolidColor[1],
+            b: settings.bgSolidColor[2],
+            a: 1
+          };
+        }
+        
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: context.getCurrentTexture().createView(),
+            clearValue: clearColor,
+            loadOp: 'clear',
+            storeOp: 'store'
+          }]
+        });
+
+        if (particles.length > 0) {
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, bindGroup);
+          pass.setVertexBuffer(0, quadBuffer);
+          pass.setVertexBuffer(1, instanceBuffer);
+          pass.draw(6, particles.length);
+        }
+        
+        pass.end();
+        device.queue.submit([encoder.finish()]);
+
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

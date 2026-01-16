@@ -1,3 +1,15 @@
+import {
+  serializeSettings,
+  deserializeSettings,
+  downloadPreset,
+  loadPresetFile,
+  startVideoRecording,
+  getVideoMimeType,
+  downloadVideo,
+  formatDuration,
+  SETTINGS_SCHEMA
+} from './exportUtils.js';
+
 const canvas = document.getElementById("gfx");
 const gizmoCanvas = document.getElementById("gizmo");
 const gizmoCtx = gizmoCanvas ? gizmoCanvas.getContext("2d") : null;
@@ -150,12 +162,94 @@ let cameraRotY = 0;
 let cameraRotZ = 0;
 let speedRandom = 0.2;
 let emitterPos = [0, 0, 0];
+
+// Animation state for emitter, vortex, attractor
+let animationTime = 0;
+let emitterAnimEnabled = false;
+let emitterAnimX = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let emitterAnimY = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let emitterAnimZ = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let emitterVelocityAffected = false;
+let emitterVelocityAmount = 1.0;
+let emitterPrevPos = [0, 0, 0];
+let emitterVelocity = [0, 0, 0];
+let emitterFrameStartPos = [0, 0, 0]; // Position at start of current frame for interpolation
+let vortexAnimEnabled = false;
+let vortexAnimX = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let vortexAnimY = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let vortexAnimZ = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let attractorAnimEnabled = false;
+let attractorAnimX = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let attractorAnimY = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+let attractorAnimZ = { enabled: false, speed: 1.0, type: "sine", phase: Math.random() * Math.PI * 2, noiseOffset: Math.random() * 1000 };
+
+// Animation motion type functions
+function animSine(time, speed, phase) {
+  return Math.sin(time * speed + phase);
+}
+
+function animBounce(time, speed, phase) {
+  // Triangle wave (ping-pong between -1 and 1)
+  const t = (time * speed + phase) / Math.PI;
+  return 2 * Math.abs(2 * (t - Math.floor(t + 0.5))) - 1;
+}
+
+function animNoise(time, speed, noiseOffset) {
+  // Simple smooth noise using multiple sine waves
+  const t = time * speed * 0.5 + noiseOffset;
+  return (
+    Math.sin(t * 1.0) * 0.5 +
+    Math.sin(t * 2.3 + 1.5) * 0.25 +
+    Math.sin(t * 4.1 + 3.2) * 0.15 +
+    Math.sin(t * 7.9 + 5.4) * 0.1
+  );
+}
+
+function animRandom(time, speed, animObj) {
+  // Random walk with momentum
+  if (animObj.randomTarget === undefined) {
+    animObj.randomTarget = 0;
+    animObj.randomCurrent = 0;
+    animObj.randomNextChange = 0;
+  }
+  if (time > animObj.randomNextChange) {
+    animObj.randomTarget = (Math.random() - 0.5) * 2;
+    animObj.randomNextChange = time + 0.5 + Math.random() * 1.5 / speed;
+  }
+  // Smooth interpolation to target
+  animObj.randomCurrent += (animObj.randomTarget - animObj.randomCurrent) * 0.02 * speed;
+  return animObj.randomCurrent;
+}
+
+function getAnimValue(time, animObj) {
+  const amplitude = 1.5; // Range: -1.5 to 1.5
+  let value = 0;
+  switch (animObj.type) {
+    case "sine":
+      value = animSine(time, animObj.speed, animObj.phase);
+      break;
+    case "bounce":
+      value = animBounce(time, animObj.speed, animObj.phase);
+      break;
+    case "noise":
+      value = animNoise(time, animObj.speed, animObj.noiseOffset);
+      break;
+    case "random":
+      value = animRandom(time, animObj.speed, animObj);
+      break;
+    default:
+      value = animSine(time, animObj.speed, animObj.phase);
+  }
+  return value * amplitude;
+}
+
 let spinRate2d = 1.2;
 let spinRateX = 1.2;
 let spinRateY = 1.2;
 let spinRateZ = 1.2;
 let spinRandom = 0.4;
 let particleSize = 1.0;
+let sizeRandom = 0.0;
 let focusOffset = 6.0;
 let aperture = 7.0;
 let focusRange = 0.8;
@@ -3780,6 +3874,10 @@ bindRange("particleSize", "particleSizeVal", () => particleSize, (v) => {
   particleSize = Math.max(1, Math.min(100, v));
   return particleSize;
 });
+bindRange("sizeRandom", "sizeRandomVal", () => sizeRandom, (v) => {
+  sizeRandom = Math.max(0, Math.min(1, v));
+  return sizeRandom;
+});
 bindRange("emitterSize", "emitterSizeVal", () => emitterSize, (v) => {
   emitterSize = Math.max(0, v);
   return emitterSize;
@@ -4507,6 +4605,160 @@ bgRadialCenterYInput.addEventListener("input", () => {
   bgRadialCenterYVal.textContent = bgRadialCenter[1].toFixed(2);
 });
 
+// Animation panel controls
+const emitterAnimEnabledToggle = document.getElementById("emitterAnimEnabled");
+const emitterAnimXToggle = document.getElementById("emitterAnimX");
+const emitterAnimYToggle = document.getElementById("emitterAnimY");
+const emitterAnimZToggle = document.getElementById("emitterAnimZ");
+const emitterAnimXSpeedInput = document.getElementById("emitterAnimXSpeed");
+const emitterAnimYSpeedInput = document.getElementById("emitterAnimYSpeed");
+const emitterAnimZSpeedInput = document.getElementById("emitterAnimZSpeed");
+const emitterAnimXTypeSelect = document.getElementById("emitterAnimXType");
+const emitterAnimYTypeSelect = document.getElementById("emitterAnimYType");
+const emitterAnimZTypeSelect = document.getElementById("emitterAnimZType");
+
+const vortexAnimEnabledToggle = document.getElementById("vortexAnimEnabled");
+const vortexAnimXToggle = document.getElementById("vortexAnimX");
+const vortexAnimYToggle = document.getElementById("vortexAnimY");
+const vortexAnimZToggle = document.getElementById("vortexAnimZ");
+const vortexAnimXSpeedInput = document.getElementById("vortexAnimXSpeed");
+const vortexAnimYSpeedInput = document.getElementById("vortexAnimYSpeed");
+const vortexAnimZSpeedInput = document.getElementById("vortexAnimZSpeed");
+const vortexAnimXTypeSelect = document.getElementById("vortexAnimXType");
+const vortexAnimYTypeSelect = document.getElementById("vortexAnimYType");
+const vortexAnimZTypeSelect = document.getElementById("vortexAnimZType");
+
+const attractorAnimEnabledToggle = document.getElementById("attractorAnimEnabled");
+const attractorAnimXToggle = document.getElementById("attractorAnimX");
+const attractorAnimYToggle = document.getElementById("attractorAnimY");
+const attractorAnimZToggle = document.getElementById("attractorAnimZ");
+const attractorAnimXSpeedInput = document.getElementById("attractorAnimXSpeed");
+const attractorAnimYSpeedInput = document.getElementById("attractorAnimYSpeed");
+const attractorAnimZSpeedInput = document.getElementById("attractorAnimZSpeed");
+const attractorAnimXTypeSelect = document.getElementById("attractorAnimXType");
+const attractorAnimYTypeSelect = document.getElementById("attractorAnimYType");
+const attractorAnimZTypeSelect = document.getElementById("attractorAnimZType");
+
+// Helper to set toggle state (reusing existing function pattern)
+function setupAnimToggle(toggle, stateObj, key, controlsId) {
+  if (!toggle) return;
+  setToggleState(toggle, stateObj[key]);
+  toggle.addEventListener("click", () => {
+    stateObj[key] = !stateObj[key];
+    setToggleState(toggle, stateObj[key]);
+    if (controlsId) {
+      if (stateObj[key]) {
+        expandParentSetting(toggle, controlsId, { updatePanelContent: false, setSettingExpanded: false });
+      } else {
+        collapseParentSetting(toggle, controlsId, { updatePanelContent: false, setSettingExpanded: false });
+      }
+    }
+  });
+}
+
+// Setup main animation toggles
+function setupMainAnimToggle(toggle, enabledVar, setEnabledVar, controlsId) {
+  if (!toggle) return;
+  setToggleState(toggle, enabledVar);
+  toggle.addEventListener("click", () => {
+    const newState = !toggle.dataset.state || toggle.dataset.state === "off";
+    setEnabledVar(newState);
+    setToggleState(toggle, newState);
+    if (controlsId) {
+      if (newState) {
+        expandParentSetting(toggle, controlsId, { updatePanelContent: false, setSettingExpanded: false });
+      } else {
+        collapseParentSetting(toggle, controlsId, { updatePanelContent: false, setSettingExpanded: false });
+      }
+    }
+  });
+}
+
+setupMainAnimToggle(emitterAnimEnabledToggle, emitterAnimEnabled, (v) => { emitterAnimEnabled = v; }, "emitterAnimControls");
+setupMainAnimToggle(vortexAnimEnabledToggle, vortexAnimEnabled, (v) => { vortexAnimEnabled = v; }, "vortexAnimControls");
+setupMainAnimToggle(attractorAnimEnabledToggle, attractorAnimEnabled, (v) => { attractorAnimEnabled = v; }, "attractorAnimControls");
+
+// Emitter velocity affected controls
+const emitterVelocityAffectedToggle = document.getElementById("emitterVelocityAffected");
+const emitterVelocityAmountInput = document.getElementById("emitterVelocityAmount");
+const emitterVelocityAmountVal = document.getElementById("emitterVelocityAmountVal");
+
+if (emitterVelocityAffectedToggle) {
+  setToggleState(emitterVelocityAffectedToggle, emitterVelocityAffected);
+  emitterVelocityAffectedToggle.addEventListener("click", () => {
+    emitterVelocityAffected = !emitterVelocityAffected;
+    setToggleState(emitterVelocityAffectedToggle, emitterVelocityAffected);
+  });
+}
+
+if (emitterVelocityAmountInput) {
+  emitterVelocityAmountInput.value = emitterVelocityAmount;
+  if (emitterVelocityAmountVal) emitterVelocityAmountVal.textContent = emitterVelocityAmount.toFixed(1);
+  emitterVelocityAmountInput.addEventListener("input", () => {
+    emitterVelocityAmount = parseFloat(emitterVelocityAmountInput.value);
+    if (emitterVelocityAmountVal) emitterVelocityAmountVal.textContent = emitterVelocityAmount.toFixed(1);
+  });
+}
+
+// Setup axis toggles for emitter
+setupAnimToggle(emitterAnimXToggle, emitterAnimX, "enabled", null);
+setupAnimToggle(emitterAnimYToggle, emitterAnimY, "enabled", null);
+setupAnimToggle(emitterAnimZToggle, emitterAnimZ, "enabled", null);
+
+// Setup axis toggles for vortex
+setupAnimToggle(vortexAnimXToggle, vortexAnimX, "enabled", null);
+setupAnimToggle(vortexAnimYToggle, vortexAnimY, "enabled", null);
+setupAnimToggle(vortexAnimZToggle, vortexAnimZ, "enabled", null);
+
+// Setup axis toggles for attractor
+setupAnimToggle(attractorAnimXToggle, attractorAnimX, "enabled", null);
+setupAnimToggle(attractorAnimYToggle, attractorAnimY, "enabled", null);
+setupAnimToggle(attractorAnimZToggle, attractorAnimZ, "enabled", null);
+
+// Speed sliders
+function setupAnimSpeedSlider(input, animObj, valSpanId) {
+  if (!input) return;
+  const valSpan = document.getElementById(valSpanId);
+  input.value = animObj.speed;
+  if (valSpan) valSpan.textContent = animObj.speed.toFixed(1);
+  input.addEventListener("input", () => {
+    animObj.speed = parseFloat(input.value);
+    if (valSpan) valSpan.textContent = animObj.speed.toFixed(1);
+  });
+}
+
+setupAnimSpeedSlider(emitterAnimXSpeedInput, emitterAnimX, "emitterAnimXSpeedVal");
+setupAnimSpeedSlider(emitterAnimYSpeedInput, emitterAnimY, "emitterAnimYSpeedVal");
+setupAnimSpeedSlider(emitterAnimZSpeedInput, emitterAnimZ, "emitterAnimZSpeedVal");
+setupAnimSpeedSlider(vortexAnimXSpeedInput, vortexAnimX, "vortexAnimXSpeedVal");
+setupAnimSpeedSlider(vortexAnimYSpeedInput, vortexAnimY, "vortexAnimYSpeedVal");
+setupAnimSpeedSlider(vortexAnimZSpeedInput, vortexAnimZ, "vortexAnimZSpeedVal");
+setupAnimSpeedSlider(attractorAnimXSpeedInput, attractorAnimX, "attractorAnimXSpeedVal");
+setupAnimSpeedSlider(attractorAnimYSpeedInput, attractorAnimY, "attractorAnimYSpeedVal");
+setupAnimSpeedSlider(attractorAnimZSpeedInput, attractorAnimZ, "attractorAnimZSpeedVal");
+
+// Motion type selects
+function setupAnimTypeSelect(select, animObj) {
+  if (!select) return;
+  select.value = animObj.type;
+  select.addEventListener("change", () => {
+    animObj.type = select.value;
+    // Reset phase for smooth transition
+    animObj.phase = Math.random() * Math.PI * 2;
+    animObj.noiseOffset = Math.random() * 1000;
+  });
+}
+
+setupAnimTypeSelect(emitterAnimXTypeSelect, emitterAnimX);
+setupAnimTypeSelect(emitterAnimYTypeSelect, emitterAnimY);
+setupAnimTypeSelect(emitterAnimZTypeSelect, emitterAnimZ);
+setupAnimTypeSelect(vortexAnimXTypeSelect, vortexAnimX);
+setupAnimTypeSelect(vortexAnimYTypeSelect, vortexAnimY);
+setupAnimTypeSelect(vortexAnimZTypeSelect, vortexAnimZ);
+setupAnimTypeSelect(attractorAnimXTypeSelect, attractorAnimX);
+setupAnimTypeSelect(attractorAnimYTypeSelect, attractorAnimY);
+setupAnimTypeSelect(attractorAnimZTypeSelect, attractorAnimZ);
+
 function attachSliderResets() {
   // Add a reset button after each range input that has a data-default
   document.querySelectorAll('input[type="range"][data-default]').forEach((input) => {
@@ -4906,6 +5158,556 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+// ============================================
+// Export Functionality
+// ============================================
+
+// Video Recording
+const recordVideoBtn = document.getElementById("recordVideoBtn");
+const recordingStatus = document.getElementById("recordingStatus");
+const videoFormatSelect = document.getElementById("videoFormat");
+let videoRecorder = null;
+let recordingStartTime = 0;
+let recordingTimer = null;
+
+// Check format support and update UI
+if (videoFormatSelect) {
+  const checkFormatSupport = () => {
+    const format = videoFormatSelect.value;
+    const { supported } = getVideoMimeType(format);
+    if (!supported) {
+      recordingStatus.textContent = `${format.toUpperCase()} not supported in this browser`;
+      recordingStatus.style.color = '#f87171';
+    } else {
+      recordingStatus.textContent = '';
+      recordingStatus.style.color = '';
+    }
+  };
+  videoFormatSelect.addEventListener('change', checkFormatSupport);
+  checkFormatSupport();
+}
+
+if (recordVideoBtn) {
+  recordVideoBtn.addEventListener("click", () => {
+    if (videoRecorder && videoRecorder.isRecording()) {
+      // Stop recording
+      videoRecorder.stop();
+      videoRecorder = null;
+      recordVideoBtn.classList.remove("recording");
+      recordVideoBtn.querySelector("span").textContent = "Start Recording";
+      if (videoFormatSelect) videoFormatSelect.disabled = false;
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        recordingTimer = null;
+      }
+    } else {
+      // Start recording
+      const format = videoFormatSelect?.value || 'webm';
+      recordingStartTime = performance.now();
+      videoRecorder = startVideoRecording(
+        canvas,
+        format,
+        () => {
+          // On start
+          recordVideoBtn.classList.add("recording");
+          recordVideoBtn.querySelector("span").textContent = "Stop Recording";
+          recordingStatus.textContent = "Recording... 0:00";
+          recordingStatus.style.color = '';
+          if (videoFormatSelect) videoFormatSelect.disabled = true;
+          recordingTimer = setInterval(() => {
+            const elapsed = (performance.now() - recordingStartTime) / 1000;
+            recordingStatus.textContent = `Recording... ${formatDuration(elapsed)}`;
+          }, 1000);
+        },
+        (blob, extension) => {
+          // On stop
+          const elapsed = (performance.now() - recordingStartTime) / 1000;
+          recordingStatus.textContent = `Saved ${formatDuration(elapsed)} ${extension.toUpperCase()} video`;
+          downloadVideo(blob, `particles-${Date.now()}.${extension}`);
+          setTimeout(() => {
+            recordingStatus.textContent = "";
+          }, 3000);
+        },
+        (errorMsg) => {
+          // On error (format not supported)
+          recordingStatus.textContent = errorMsg;
+          recordingStatus.style.color = '#f87171';
+        }
+      );
+    }
+  });
+}
+
+// GIF Export
+const exportGifBtn = document.getElementById("exportGifBtn");
+const gifStatus = document.getElementById("gifStatus");
+const gifProgress = document.getElementById("gifProgress");
+const gifProgressBar = document.getElementById("gifProgressBar");
+const gifDurationInput = document.getElementById("gifDuration");
+const gifDurationVal = document.getElementById("gifDurationVal");
+const gifFpsInput = document.getElementById("gifFps");
+const gifFpsVal = document.getElementById("gifFpsVal");
+
+if (gifDurationInput && gifDurationVal) {
+  gifDurationInput.addEventListener("input", () => {
+    gifDurationVal.textContent = gifDurationInput.value;
+  });
+}
+if (gifFpsInput && gifFpsVal) {
+  gifFpsInput.addEventListener("input", () => {
+    gifFpsVal.textContent = gifFpsInput.value;
+  });
+}
+
+if (exportGifBtn) {
+  exportGifBtn.addEventListener("click", async () => {
+    const duration = parseFloat(gifDurationInput?.value || 3);
+    const fps = parseInt(gifFpsInput?.value || 30);
+    const totalFrames = Math.floor(duration * fps);
+    const frameDelay = 1000 / fps;
+    
+    exportGifBtn.disabled = true;
+    gifStatus.textContent = "Capturing frames...";
+    if (gifProgress) gifProgress.style.display = "block";
+    
+    // Dynamically import gif.js
+    try {
+      const GIF = (await import('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js')).default || window.GIF;
+      
+      const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        width: canvas.width,
+        height: canvas.height,
+        workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'
+      });
+      
+      // Capture frames
+      let frameCount = 0;
+      const captureFrame = () => {
+        if (frameCount >= totalFrames) {
+          gifStatus.textContent = "Encoding GIF...";
+          gif.render();
+          return;
+        }
+        
+        gif.addFrame(canvas, { delay: frameDelay, copy: true });
+        frameCount++;
+        if (gifProgressBar) {
+          gifProgressBar.style.width = `${(frameCount / totalFrames) * 50}%`;
+        }
+        gifStatus.textContent = `Capturing frame ${frameCount}/${totalFrames}`;
+        
+        setTimeout(captureFrame, frameDelay);
+      };
+      
+      gif.on('progress', (p) => {
+        if (gifProgressBar) {
+          gifProgressBar.style.width = `${50 + p * 50}%`;
+        }
+      });
+      
+      gif.on('finished', (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `particles-${Date.now()}.gif`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        exportGifBtn.disabled = false;
+        gifStatus.textContent = "GIF exported!";
+        if (gifProgress) gifProgress.style.display = "none";
+        if (gifProgressBar) gifProgressBar.style.width = "0%";
+        setTimeout(() => {
+          gifStatus.textContent = "";
+        }, 3000);
+      });
+      
+      captureFrame();
+    } catch (err) {
+      console.error("GIF export error:", err);
+      exportGifBtn.disabled = false;
+      gifStatus.textContent = "GIF export failed - gif.js not available";
+      if (gifProgress) gifProgress.style.display = "none";
+    }
+  });
+}
+
+// Preset Save/Load
+const savePresetBtn = document.getElementById("savePresetBtn");
+const loadPresetBtn = document.getElementById("loadPresetBtn");
+const presetFileInput = document.getElementById("presetFileInput");
+
+// Collect all current settings into an object for serialization
+function getCurrentSettings() {
+  return {
+    emissionRate,
+    initialSpeed,
+    lifeSeconds,
+    lifeRandom,
+    particleSize,
+    sizeRandom,
+    particleShape,
+    sphereSubdivisions,
+    particleColorMode,
+    solidColor: [...solidColor],
+    particleOpacity,
+    blendMode,
+    softness,
+    noiseStrength,
+    spinRateX,
+    spinRateY,
+    spinRateZ,
+    spinRandom,
+    emitterPos: [...emitterPos],
+    emitterSize,
+    emitterShape,
+    emitFrom,
+    emissionDirection,
+    coneAngle,
+    directionRotX,
+    directionRotY,
+    directionRotZ,
+    speedRandom,
+    emitterAnimEnabled,
+    emitterAnimX: { ...emitterAnimX },
+    emitterAnimY: { ...emitterAnimY },
+    emitterAnimZ: { ...emitterAnimZ },
+    emitterVelocityAffected,
+    emitterVelocityAmount,
+    vortexAnimEnabled,
+    vortexAnimX: { ...vortexAnimX },
+    vortexAnimY: { ...vortexAnimY },
+    vortexAnimZ: { ...vortexAnimZ },
+    attractorAnimEnabled,
+    attractorAnimX: { ...attractorAnimX },
+    attractorAnimY: { ...attractorAnimY },
+    attractorAnimZ: { ...attractorAnimZ },
+    forceMode,
+    turbulenceStrength,
+    turbulenceScale,
+    curlStrength,
+    curlScale,
+    vortexEnabled,
+    vortexStrength,
+    vortexRadius,
+    vortexPos: [...vortexPos],
+    vortexRotX,
+    vortexRotY,
+    vortexRotZ,
+    attractorEnabled,
+    attractorStrength,
+    attractorRadius,
+    attractorPos: [...attractorPos],
+    gravity,
+    wind: [...wind],
+    drag,
+    groundEnabled,
+    groundLevel,
+    bounce,
+    forcesEnabled,
+    shadingEnabled,
+    shadingStyle,
+    lightIntensity,
+    lightPos: [...lightPos],
+    lightColor: [...lightColor],
+    rimIntensity,
+    specIntensity,
+    surfaceEnabled,
+    wireframeEnabled,
+    wireframeSameColor,
+    wireframeColor: [...wireframeColor],
+    cameraRotX,
+    cameraRotY,
+    cameraRotZ,
+    cameraViewEnabled,
+    dofEnabled,
+    dofDepthSlider,
+    dofApertureSlider,
+    focusRange,
+    bgMode,
+    bgSolidColor: [...bgSolidColor],
+    bgLinearDirection,
+    bgRadialCenter: [...bgRadialCenter],
+    sizeCurvePoints: sizeCurvePoints.map(p => ({ ...p })),
+    opacityCurvePoints: opacityCurvePoints.map(p => ({ ...p })),
+    colorGradientPoints: colorGradientPoints.map(p => ({ pos: p.pos, color: [...p.color] })),
+    bgGradientPoints: bgGradientPoints.map(p => ({ pos: p.pos, color: [...p.color] }))
+  };
+}
+
+if (savePresetBtn) {
+  savePresetBtn.addEventListener("click", () => {
+    const settings = getCurrentSettings();
+    downloadPreset(settings, `particle-preset-${Date.now()}.json`);
+  });
+}
+
+if (loadPresetBtn && presetFileInput) {
+  loadPresetBtn.addEventListener("click", () => {
+    presetFileInput.click();
+  });
+  
+  presetFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+      const settings = await loadPresetFile(file);
+      applyPresetSettings(settings);
+    } catch (err) {
+      console.error("Failed to load preset:", err);
+      alert("Failed to load preset file");
+    }
+    
+    // Reset file input
+    presetFileInput.value = "";
+  });
+}
+
+// Apply loaded preset settings
+function applyPresetSettings(settings) {
+  // Helper to safely update an input element
+  const updateInput = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
+  
+  // Helper to update a toggle button
+  const updateToggle = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.dataset.state = value ? "on" : "off";
+      el.textContent = value ? "On" : "Off";
+      el.dispatchEvent(new Event("click", { bubbles: true }));
+    }
+  };
+  
+  // Apply each setting
+  if (settings.emissionRate !== undefined) updateInput("emissionRate", settings.emissionRate);
+  if (settings.initialSpeed !== undefined) updateInput("initialSpeed", settings.initialSpeed);
+  if (settings.lifeSeconds !== undefined) updateInput("lifeSeconds", settings.lifeSeconds);
+  if (settings.lifeRandom !== undefined) updateInput("lifeRandom", settings.lifeRandom);
+  if (settings.particleSize !== undefined) updateInput("particleSize", settings.particleSize);
+  if (settings.sizeRandom !== undefined) updateInput("sizeRandom", settings.sizeRandom);
+  if (settings.speedRandom !== undefined) updateInput("speedRandom", settings.speedRandom);
+  if (settings.emitterSize !== undefined) updateInput("emitterSize", settings.emitterSize);
+  if (settings.coneAngle !== undefined) updateInput("coneAngle", settings.coneAngle);
+  if (settings.particleOpacity !== undefined) updateInput("particleOpacity", settings.particleOpacity);
+  
+  // Force settings
+  if (settings.turbulenceStrength !== undefined) updateInput("turbulenceStrength", settings.turbulenceStrength);
+  if (settings.turbulenceScale !== undefined) updateInput("turbulenceScale", settings.turbulenceScale);
+  if (settings.curlStrength !== undefined) updateInput("curlStrength", settings.curlStrength);
+  if (settings.curlScale !== undefined) updateInput("curlScale", settings.curlScale);
+  if (settings.vortexStrength !== undefined) updateInput("vortexStrength", settings.vortexStrength);
+  if (settings.vortexRadius !== undefined) updateInput("vortexRadius", settings.vortexRadius);
+  if (settings.attractorStrength !== undefined) updateInput("attractorStrength", settings.attractorStrength);
+  if (settings.attractorRadius !== undefined) updateInput("attractorRadius", settings.attractorRadius);
+  if (settings.gravity !== undefined) updateInput("gravity", settings.gravity);
+  if (settings.drag !== undefined) updateInput("drag", settings.drag);
+  if (settings.groundLevel !== undefined) updateInput("groundLevel", settings.groundLevel);
+  if (settings.bounce !== undefined) updateInput("bounce", settings.bounce);
+  
+  // Shading settings
+  if (settings.lightIntensity !== undefined) updateInput("lightIntensity", settings.lightIntensity);
+  if (settings.rimIntensity !== undefined) updateInput("rimIntensity", settings.rimIntensity);
+  if (settings.specIntensity !== undefined) updateInput("specIntensity", settings.specIntensity);
+  
+  // Camera settings
+  if (settings.dofDepthSlider !== undefined) updateInput("focusDepth", settings.dofDepthSlider);
+  if (settings.dofApertureSlider !== undefined) updateInput("aperture", settings.dofApertureSlider);
+  
+  // Emitter position
+  if (settings.emitterPos) {
+    updateInput("emitterPosX", settings.emitterPos[0]);
+    updateInput("emitterPosY", settings.emitterPos[1]);
+    updateInput("emitterPosZ", settings.emitterPos[2]);
+  }
+  
+  // Vortex position
+  if (settings.vortexPos) {
+    updateInput("vortexPosX", settings.vortexPos[0]);
+    updateInput("vortexPosY", settings.vortexPos[1]);
+    updateInput("vortexPosZ", settings.vortexPos[2]);
+  }
+  
+  // Attractor position
+  if (settings.attractorPos) {
+    updateInput("attractorPosX", settings.attractorPos[0]);
+    updateInput("attractorPosY", settings.attractorPos[1]);
+    updateInput("attractorPosZ", settings.attractorPos[2]);
+  }
+  
+  // Select elements
+  if (settings.particleShape) {
+    const el = document.getElementById("particleShape");
+    if (el) {
+      el.value = settings.particleShape;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.emitterShape) {
+    const el = document.getElementById("emitterShape");
+    if (el) {
+      el.value = settings.emitterShape;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.emitFrom) {
+    const el = document.getElementById("emitFrom");
+    if (el) {
+      el.value = settings.emitFrom;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.emissionDirection) {
+    const el = document.getElementById("emissionDirection");
+    if (el) {
+      el.value = settings.emissionDirection;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.forceMode) {
+    const el = document.getElementById("forceMode");
+    if (el) {
+      el.value = settings.forceMode;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.blendMode) {
+    const el = document.getElementById("blendMode");
+    if (el) {
+      el.value = settings.blendMode;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  if (settings.bgMode) {
+    const el = document.getElementById("bgMode");
+    if (el) {
+      el.value = settings.bgMode;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  
+  // Colors
+  if (settings.solidColor) {
+    solidColor = settings.solidColor;
+    const colorHex = `#${Math.round(solidColor[0] * 255).toString(16).padStart(2, '0')}${Math.round(solidColor[1] * 255).toString(16).padStart(2, '0')}${Math.round(solidColor[2] * 255).toString(16).padStart(2, '0')}`;
+    const el = document.getElementById("solidColorPicker");
+    if (el) el.value = colorHex;
+  }
+  
+  if (settings.bgSolidColor) {
+    bgSolidColor = settings.bgSolidColor;
+    const colorHex = `#${Math.round(bgSolidColor[0] * 255).toString(16).padStart(2, '0')}${Math.round(bgSolidColor[1] * 255).toString(16).padStart(2, '0')}${Math.round(bgSolidColor[2] * 255).toString(16).padStart(2, '0')}`;
+    const el = document.getElementById("bgSolidColor");
+    if (el) el.value = colorHex;
+  }
+  
+  // Curve points
+  if (settings.sizeCurvePoints && sizeCurveEditor) {
+    sizeCurvePoints = settings.sizeCurvePoints;
+    sizeCurveEditor.setPoints(sizeCurvePoints);
+  }
+  if (settings.opacityCurvePoints && opacityCurveEditor) {
+    opacityCurvePoints = settings.opacityCurvePoints;
+    opacityCurveEditor.setPoints(opacityCurvePoints);
+  }
+  if (settings.colorGradientPoints && gradientEditor) {
+    colorGradientPoints = settings.colorGradientPoints;
+    gradientEditor.setPoints(colorGradientPoints);
+  }
+  if (settings.bgGradientPoints && bgGradientEditor) {
+    bgGradientPoints = settings.bgGradientPoints;
+    bgGradientEditor.setPoints(bgGradientPoints);
+  }
+  
+  // Direct variable assignments for settings that might not have UI bindings
+  if (settings.spinRateX !== undefined) spinRateX = settings.spinRateX;
+  if (settings.spinRateY !== undefined) spinRateY = settings.spinRateY;
+  if (settings.spinRateZ !== undefined) spinRateZ = settings.spinRateZ;
+  if (settings.spinRandom !== undefined) spinRandom = settings.spinRandom;
+  if (settings.particleColorMode !== undefined) particleColorMode = settings.particleColorMode;
+  if (settings.shadingEnabled !== undefined) shadingEnabled = settings.shadingEnabled;
+  if (settings.shadingStyle !== undefined) shadingStyle = settings.shadingStyle;
+  if (settings.surfaceEnabled !== undefined) surfaceEnabled = settings.surfaceEnabled;
+  if (settings.wireframeEnabled !== undefined) wireframeEnabled = settings.wireframeEnabled;
+  if (settings.vortexEnabled !== undefined) vortexEnabled = settings.vortexEnabled;
+  if (settings.attractorEnabled !== undefined) attractorEnabled = settings.attractorEnabled;
+  if (settings.groundEnabled !== undefined) groundEnabled = settings.groundEnabled;
+  if (settings.forcesEnabled !== undefined) forcesEnabled = settings.forcesEnabled;
+  if (settings.dofEnabled !== undefined) dofEnabled = settings.dofEnabled;
+  
+  // Animation settings
+  if (settings.emitterAnimEnabled !== undefined) emitterAnimEnabled = settings.emitterAnimEnabled;
+  if (settings.emitterAnimX) Object.assign(emitterAnimX, settings.emitterAnimX);
+  if (settings.emitterAnimY) Object.assign(emitterAnimY, settings.emitterAnimY);
+  if (settings.emitterAnimZ) Object.assign(emitterAnimZ, settings.emitterAnimZ);
+  if (settings.emitterVelocityAffected !== undefined) emitterVelocityAffected = settings.emitterVelocityAffected;
+  if (settings.emitterVelocityAmount !== undefined) emitterVelocityAmount = settings.emitterVelocityAmount;
+  if (settings.vortexAnimEnabled !== undefined) vortexAnimEnabled = settings.vortexAnimEnabled;
+  if (settings.vortexAnimX) Object.assign(vortexAnimX, settings.vortexAnimX);
+  if (settings.vortexAnimY) Object.assign(vortexAnimY, settings.vortexAnimY);
+  if (settings.vortexAnimZ) Object.assign(vortexAnimZ, settings.vortexAnimZ);
+  if (settings.attractorAnimEnabled !== undefined) attractorAnimEnabled = settings.attractorAnimEnabled;
+  if (settings.attractorAnimX) Object.assign(attractorAnimX, settings.attractorAnimX);
+  if (settings.attractorAnimY) Object.assign(attractorAnimY, settings.attractorAnimY);
+  if (settings.attractorAnimZ) Object.assign(attractorAnimZ, settings.attractorAnimZ);
+}
+
+// Standalone Export
+const exportStandaloneBtn = document.getElementById("exportStandaloneBtn");
+
+if (exportStandaloneBtn) {
+  exportStandaloneBtn.addEventListener("click", async () => {
+    exportStandaloneBtn.disabled = true;
+    exportStandaloneBtn.querySelector("span").textContent = "Exporting...";
+    
+    try {
+      const settings = getCurrentSettings();
+      
+      // Fetch the standalone template
+      const templateResponse = await fetch('./standalone-template.html');
+      if (!templateResponse.ok) {
+        throw new Error('Standalone template not found');
+      }
+      let template = await templateResponse.text();
+      
+      // Inject settings into template
+      template = template.replace(
+        '/* SETTINGS_PLACEHOLDER */',
+        `const PRESET_SETTINGS = ${JSON.stringify(settings, null, 2)};`
+      );
+      
+      // Download the standalone file
+      const blob = new Blob([template], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `particle-standalone-${Date.now()}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      exportStandaloneBtn.querySelector("span").textContent = "Export HTML";
+    } catch (err) {
+      console.error("Standalone export error:", err);
+      alert("Failed to export standalone file. Make sure standalone-template.html exists.");
+    }
+    
+    exportStandaloneBtn.disabled = false;
+    exportStandaloneBtn.querySelector("span").textContent = "Export HTML";
+  });
+}
+
 function getEmissionDirection() {
   const ax = (directionRotX * Math.PI) / 180;
   const ay = (directionRotY * Math.PI) / 180;
@@ -4927,7 +5729,7 @@ function growParticleBuffers(newCapacity) {
   instanceData = new Float32Array(particleCapacity * 17);
 }
 
-function spawnAt(x, y, count = 1, timeOffset = 0) {
+function spawnAt(x, y, count = 1, lerpFactor = 1, frameDt = 0) {
   for (let i = 0; i < count; i += 1) {
     const spread = emitterSize;
     let offset = [0, 0, 0];
@@ -4947,10 +5749,15 @@ function spawnAt(x, y, count = 1, timeOffset = 0) {
       offset = applyEmitterRotation(localOffset);
     }
 
+    // Interpolate emitter position for smooth emission during animation
+    const interpEmitterX = emitterFrameStartPos[0] + (emitterPos[0] - emitterFrameStartPos[0]) * lerpFactor;
+    const interpEmitterY = emitterFrameStartPos[1] + (emitterPos[1] - emitterFrameStartPos[1]) * lerpFactor;
+    const interpEmitterZ = emitterFrameStartPos[2] + (emitterPos[2] - emitterFrameStartPos[2]) * lerpFactor;
+
     const pos = [
-      x + emitterPos[0] + offset[0],
-      y + emitterPos[1] + offset[1],
-      emitterPos[2] + offset[2],
+      x + interpEmitterX + offset[0],
+      y + interpEmitterY + offset[1],
+      interpEmitterZ + offset[2],
     ];
     let baseDir;
     if (emissionDirection === "outwards") {
@@ -4974,6 +5781,13 @@ function spawnAt(x, y, count = 1, timeOffset = 0) {
     const dir = randomConeDirection(baseDir, coneAngle);
     const speed = Math.max(0, initialSpeed * (1 + rand(-speedRandom, speedRandom)));
     const vel = [dir[0] * speed, dir[1] * speed, dir[2] * speed];
+    
+    // Add emitter velocity to particle velocity if enabled
+    if (emitterVelocityAffected && emitterAnimEnabled) {
+      vel[0] += emitterVelocity[0] * emitterVelocityAmount;
+      vel[1] += emitterVelocity[1] * emitterVelocityAmount;
+      vel[2] += emitterVelocity[2] * emitterVelocityAmount;
+    }
     let axis;
     let spin;
     if (particleShape === "circle" || particleShape === "square") {
@@ -5008,25 +5822,24 @@ function spawnAt(x, y, count = 1, timeOffset = 0) {
     } else if (particleColorMode === "solid") {
       particleColor = solidColor.slice();
     }
-    const age = Math.max(0, timeOffset);
-    const posOffset = age > 0 ? [vel[0] * age, vel[1] * age, vel[2] * age] : [0, 0, 0];
+    // Calculate initial age based on when during the frame this particle was spawned
+    // Particles spawned earlier (lower lerpFactor) should be slightly older
+    const age = lerpFactor * frameDt;
+    // Apply size randomness - at max (1.0), size can range from 0.1x to 4x
+    const sizeMultiplier = 1 + rand(-sizeRandom, sizeRandom) * 3;
+    const randomizedSize = Math.max(0.1, sizeMultiplier);
+    
     particles.push({
       pos,
       vel,
       age,
       life: Math.max(0.1, life),
-      size: 1.0,
+      size: randomizedSize,
       seed,
       axis,
       spin,
       color: particleColor,
     });
-    if (age > 0) {
-      const p = particles[particles.length - 1];
-      p.pos[0] += posOffset[0];
-      p.pos[1] += posOffset[1];
-      p.pos[2] += posOffset[2];
-    }
   }
 }
 
@@ -5137,6 +5950,77 @@ function frame() {
   const now = performance.now();
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
+  
+  // Update animation time
+  animationTime += dt;
+  
+  // Apply position animations
+  // Store frame start position for particle interpolation
+  emitterFrameStartPos[0] = emitterPos[0];
+  emitterFrameStartPos[1] = emitterPos[1];
+  emitterFrameStartPos[2] = emitterPos[2];
+  
+  if (emitterAnimEnabled) {
+    // Store previous position for velocity calculation
+    const prevX = emitterPos[0];
+    const prevY = emitterPos[1];
+    const prevZ = emitterPos[2];
+    
+    if (emitterAnimX.enabled) {
+      emitterPos[0] = getAnimValue(animationTime, emitterAnimX);
+    }
+    if (emitterAnimY.enabled) {
+      emitterPos[1] = getAnimValue(animationTime, emitterAnimY);
+    }
+    if (emitterAnimZ.enabled) {
+      emitterPos[2] = getAnimValue(animationTime, emitterAnimZ);
+    }
+    
+    // Calculate emitter velocity (change per second)
+    if (dt > 0) {
+      emitterVelocity[0] = (emitterPos[0] - prevX) / dt;
+      emitterVelocity[1] = (emitterPos[1] - prevY) / dt;
+      emitterVelocity[2] = (emitterPos[2] - prevZ) / dt;
+    }
+    
+    updateEmitterPosInputs();
+  } else {
+    // Reset velocity when animation is off
+    emitterVelocity[0] = 0;
+    emitterVelocity[1] = 0;
+    emitterVelocity[2] = 0;
+  }
+  
+  if (vortexAnimEnabled && vortexEnabled) {
+    if (vortexAnimX.enabled) {
+      vortexPos[0] = getAnimValue(animationTime, vortexAnimX);
+      updateVortexPosInputs();
+    }
+    if (vortexAnimY.enabled) {
+      vortexPos[1] = getAnimValue(animationTime, vortexAnimY);
+      updateVortexPosInputs();
+    }
+    if (vortexAnimZ.enabled) {
+      vortexPos[2] = getAnimValue(animationTime, vortexAnimZ);
+      updateVortexPosInputs();
+    }
+  }
+  
+  if (attractorAnimEnabled && attractorEnabled) {
+    if (attractorAnimX.enabled) {
+      attractorPos[0] = getAnimValue(animationTime, attractorAnimX);
+      updateAttractorPosInputs();
+    }
+    if (attractorAnimY.enabled) {
+      attractorPos[1] = getAnimValue(animationTime, attractorAnimY);
+      updateAttractorPosInputs();
+    }
+    if (attractorAnimZ.enabled) {
+      attractorPos[2] = getAnimValue(animationTime, attractorAnimZ);
+      updateAttractorPosInputs();
+    }
+  }
+  
   const cameraViewActive = cameraViewEnabled && dofEnabled;
   const frameMs = now - perfLastFrame;
   perfLastFrame = now;
@@ -5246,8 +6130,9 @@ function frame() {
     if (spawnNow > 0) {
       spawnAccum -= spawnNow;
       for (let i = 0; i < spawnNow; i += 1) {
-        const offset = ((i + 0.5) / spawnNow) * dt;
-        spawnAt(0, 0, 1, offset);
+        // Distribute particles evenly across the frame (0 = start, 1 = end)
+        const lerpFactor = (i + 0.5) / spawnNow;
+        spawnAt(0, 0, 1, lerpFactor, dt);
     }
   }
 
@@ -5280,7 +6165,7 @@ function frame() {
     for (let i = 0; i < drawCount; i += 1) {
       const p = particles[i];
       const lifeT = p.age / p.life;
-      const sizePixels = particleSize * 5;
+      const sizePixels = particleSize * 5 * p.size;
       const baseUnitsPerPixel = worldUnitsPerPixelAt(target);
       const size = evalCurve(sizeCurvePoints, lifeT) * sizePixels * baseUnitsPerPixel;
       const opacity = evalCurve(opacityCurvePoints, lifeT) * particleOpacity;
