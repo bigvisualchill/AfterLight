@@ -181,12 +181,32 @@ export class Renderer {
     this.blurNearPipeline = null;
     this.compositePipeline = null;
     
+    // GPU Compute pipelines
+    this.emitPipeline = null;
+    this.simulatePipeline = null;
+    this.initFreeListPipeline = null;
+    this.buildIndirectPipeline = null;
+    
     // Buffers
     this.uniformBuffer = null;
     this.instanceBuffer = null;
     this.meshBuffers = {};
     this.backgroundUniformBuffer = null;
     this.bgGradientBuffer = null;
+    
+    // GPU Particle storage buffers
+    this.particleBuffer = null;
+    this.freeListBuffer = null;
+    this.aliveCountBuffer = null;
+    this.freeListCountBuffer = null;
+    this.indirectArgsBuffer = null;
+    this.simUniformBuffer = null;
+    this.emitUniformBuffer = null;
+    
+    // GPU Compute bind groups
+    this.computeBindGroup0 = null;
+    this.computeBindGroup1 = null;
+    this.gpuParticleBindGroup = null;
     
     // DOF resources
     this.cocBuffer = null;
@@ -223,6 +243,10 @@ export class Renderer {
 
     // Instance capacity (for dynamic stress testing)
     this.instanceCapacity = 0;
+    
+    // GPU simulation state
+    this.gpuSimInitialized = false;
+    this.maxParticles = 0;
   }
 
   /**
@@ -338,6 +362,426 @@ export class Renderer {
 
     // Load shaders and create pipelines
     await this.createPipelines();
+    
+    // Create GPU compute pipelines for particle simulation
+    await this.createComputePipelines();
+  }
+  
+  /**
+   * Create GPU compute pipelines for particle simulation
+   */
+  async createComputePipelines() {
+    const maxParticles = state.particle.capacity;
+    this.maxParticles = maxParticles;
+    
+    // Particle struct: 20 floats = 80 bytes per particle
+    const particleSize = 80;
+    
+    // Create particle storage buffer
+    this.particleBuffer = this.device.createBuffer({
+      size: maxParticles * particleSize,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    });
+    
+    // Free list buffer (indices of free slots)
+    this.freeListBuffer = this.device.createBuffer({
+      size: maxParticles * 4, // u32 per slot
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Alive count buffer (atomic counter)
+    this.aliveCountBuffer = this.device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    });
+    
+    // Free list count buffer (atomic counter)
+    this.freeListCountBuffer = this.device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Indirect draw args buffer: [indexCount, instanceCount, firstIndex, baseVertex, firstInstance]
+    this.indirectArgsBuffer = this.device.createBuffer({
+      size: 20, // 5 u32s
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Simulation uniforms buffer (128 bytes for SimUniforms struct)
+    this.simUniformBuffer = this.device.createBuffer({
+      size: 128,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Emit uniforms buffer (128 bytes for EmitUniforms struct)
+    this.emitUniformBuffer = this.device.createBuffer({
+      size: 128,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    
+    // Load compute shader
+    const computeShaderCode = await fetch("shaders/particle-sim.wgsl").then(r => r.text());
+    const computeModule = this.device.createShaderModule({ code: computeShaderCode });
+    
+    // Bind group layout 0: particles, simUniforms, aliveCount, indirectArgs
+    const computeBindGroupLayout0 = this.device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // particles
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // simUniforms
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // aliveCount
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectArgs
+      ],
+    });
+    
+    // Bind group layout 1: emitUniforms, freeList, freeListCount
+    const computeBindGroupLayout1 = this.device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // emitUniforms
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // freeList
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // freeListCount
+      ],
+    });
+    
+    const computePipelineLayout = this.device.createPipelineLayout({
+      bindGroupLayouts: [computeBindGroupLayout0, computeBindGroupLayout1],
+    });
+    
+    // Create compute pipelines
+    this.emitPipeline = this.device.createComputePipeline({
+      layout: computePipelineLayout,
+      compute: { module: computeModule, entryPoint: "emit" },
+    });
+    
+    this.simulatePipeline = this.device.createComputePipeline({
+      layout: computePipelineLayout,
+      compute: { module: computeModule, entryPoint: "simulate" },
+    });
+    
+    this.initFreeListPipeline = this.device.createComputePipeline({
+      layout: computePipelineLayout,
+      compute: { module: computeModule, entryPoint: "initFreeList" },
+    });
+    
+    this.buildIndirectPipeline = this.device.createComputePipeline({
+      layout: computePipelineLayout,
+      compute: { module: computeModule, entryPoint: "buildIndirect" },
+    });
+    
+    // Create bind groups
+    this.computeBindGroup0 = this.device.createBindGroup({
+      layout: computeBindGroupLayout0,
+      entries: [
+        { binding: 0, resource: { buffer: this.particleBuffer } },
+        { binding: 1, resource: { buffer: this.simUniformBuffer } },
+        { binding: 2, resource: { buffer: this.aliveCountBuffer } },
+        { binding: 3, resource: { buffer: this.indirectArgsBuffer } },
+      ],
+    });
+    
+    this.computeBindGroup1 = this.device.createBindGroup({
+      layout: computeBindGroupLayout1,
+      entries: [
+        { binding: 0, resource: { buffer: this.emitUniformBuffer } },
+        { binding: 1, resource: { buffer: this.freeListBuffer } },
+        { binding: 2, resource: { buffer: this.freeListCountBuffer } },
+      ],
+    });
+    
+    // Store layouts for recreation
+    this.computeBindGroupLayout0 = computeBindGroupLayout0;
+    this.computeBindGroupLayout1 = computeBindGroupLayout1;
+    
+    // Create GPU render bind group (for particle rendering from storage buffer)
+    await this.createGpuParticlePipeline();
+  }
+  
+  /**
+   * Create GPU particle render pipeline (reads from storage buffer)
+   */
+  async createGpuParticlePipeline() {
+    // Load particle shader with GPU path
+    const particleShaderCode = await fetch("shaders/particle.wgsl").then(r => r.text());
+    const particleModule = this.device.createShaderModule({ code: particleShaderCode });
+    
+    // GPU particle bind group layout: uniforms, noise, sampler, particle storage
+    const gpuParticleBindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } }, // particle storage
+      ],
+    });
+    
+    // Vertex layout for mesh only (no instance attributes - read from storage)
+    const gpuVertexBufferLayout = [
+      {
+        arrayStride: 36,
+        stepMode: "vertex",
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: "float32x3" },  // position
+          { shaderLocation: 1, offset: 12, format: "float32x3" }, // normal
+          { shaderLocation: 11, offset: 24, format: "float32x3" }, // barycentric
+        ],
+      },
+    ];
+    
+    const blendModes = {
+      additive: {
+        color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
+      },
+      screen: {
+        color: { srcFactor: "one", dstFactor: "one-minus-src", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
+      normal: {
+        color: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
+      multiply: {
+        color: { srcFactor: "dst", dstFactor: "zero", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
+    };
+    
+    this.gpuParticlePipelines = {};
+    for (const [mode, blend] of Object.entries(blendModes)) {
+      this.gpuParticlePipelines[mode] = this.device.createRenderPipeline({
+        layout: this.device.createPipelineLayout({ bindGroupLayouts: [gpuParticleBindGroupLayout] }),
+        vertex: {
+          module: particleModule,
+          entryPoint: "vs_gpu",
+          buffers: gpuVertexBufferLayout,
+        },
+        fragment: {
+          module: particleModule,
+          entryPoint: "fs_main",
+          targets: [{
+            format: "rgba16float",
+            blend,
+          }],
+        },
+        primitive: { topology: "triangle-list", cullMode: "none" },
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: "less",
+          format: "depth24plus",
+        },
+      });
+    }
+    
+    this.gpuParticleBindGroupLayout = gpuParticleBindGroupLayout;
+    this.createGpuParticleBindGroup();
+  }
+  
+  createGpuParticleBindGroup() {
+    if (!this.gpuParticleBindGroupLayout || !this.particleBuffer) return;
+    
+    this.gpuParticleBindGroup = this.device.createBindGroup({
+      layout: this.gpuParticleBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: this.noiseTexture.createView() },
+        { binding: 2, resource: this.noiseSampler },
+        { binding: 3, resource: { buffer: this.particleBuffer } },
+      ],
+    });
+  }
+  
+  /**
+   * Initialize GPU particle system (call once before first use)
+   */
+  initGpuParticles() {
+    if (this.gpuSimInitialized) return;
+    
+    const commandEncoder = this.device.createCommandEncoder();
+    
+    // Initialize indirect args: [indexCount, instanceCount, firstIndex, baseVertex, firstInstance]
+    // indexCount will be set per mesh, instanceCount starts at 0
+    const indirectData = new Uint32Array([6, 0, 0, 0, 0]); // Default quad mesh
+    this.device.queue.writeBuffer(this.indirectArgsBuffer, 0, indirectData);
+    
+    // Run init free list compute
+    const workgroups = Math.ceil(this.maxParticles / 64);
+    const pass = commandEncoder.beginComputePass();
+    pass.setPipeline(this.initFreeListPipeline);
+    pass.setBindGroup(0, this.computeBindGroup0);
+    pass.setBindGroup(1, this.computeBindGroup1);
+    pass.dispatchWorkgroups(workgroups);
+    pass.end();
+    
+    this.device.queue.submit([commandEncoder.finish()]);
+    this.gpuSimInitialized = true;
+  }
+  
+  /**
+   * Run GPU particle compute (emit + simulate)
+   */
+  runParticleCompute(simParams, emitParams, spawnCount, mesh) {
+    if (!this.gpuSimInitialized) {
+      this.initGpuParticles();
+    }
+    
+    // Update uniform buffers
+    this.device.queue.writeBuffer(this.simUniformBuffer, 0, simParams);
+    this.device.queue.writeBuffer(this.emitUniformBuffer, 0, emitParams);
+    
+    // Update indirect args with mesh index count
+    const indexCountData = new Uint32Array([mesh.indexCount]);
+    this.device.queue.writeBuffer(this.indirectArgsBuffer, 0, indexCountData);
+    
+    const commandEncoder = this.device.createCommandEncoder();
+    
+    // Emit pass
+    if (spawnCount > 0) {
+      const emitWorkgroups = Math.ceil(spawnCount / 64);
+      const emitPass = commandEncoder.beginComputePass();
+      emitPass.setPipeline(this.emitPipeline);
+      emitPass.setBindGroup(0, this.computeBindGroup0);
+      emitPass.setBindGroup(1, this.computeBindGroup1);
+      emitPass.dispatchWorkgroups(emitWorkgroups);
+      emitPass.end();
+    }
+    
+    // Simulate pass
+    const simWorkgroups = Math.ceil(this.maxParticles / 64);
+    const simPass = commandEncoder.beginComputePass();
+    simPass.setPipeline(this.simulatePipeline);
+    simPass.setBindGroup(0, this.computeBindGroup0);
+    simPass.setBindGroup(1, this.computeBindGroup1);
+    simPass.dispatchWorkgroups(simWorkgroups);
+    simPass.end();
+    
+    // Build indirect args
+    const indirectPass = commandEncoder.beginComputePass();
+    indirectPass.setPipeline(this.buildIndirectPipeline);
+    indirectPass.setBindGroup(0, this.computeBindGroup0);
+    indirectPass.setBindGroup(1, this.computeBindGroup1);
+    indirectPass.dispatchWorkgroups(1);
+    indirectPass.end();
+    
+    this.device.queue.submit([commandEncoder.finish()]);
+  }
+  
+  /**
+   * Render using GPU particle buffer with indirect draw
+   */
+  renderGPU(dofEnabled, blurNearData) {
+    const commandEncoder = this.device.createCommandEncoder();
+    const mesh = this.getCurrentMeshBuffer();
+    
+    // Main render pass
+    {
+      const pass = commandEncoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.hdrTexture.createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+        depthStencilAttachment: {
+          view: this.depthTexture.createView(),
+          depthClearValue: 1.0,
+          depthLoadOp: "clear",
+          depthStoreOp: "store",
+        },
+      });
+      
+      // Background
+      pass.setPipeline(this.backgroundPipeline);
+      pass.setBindGroup(0, this.backgroundBindGroup);
+      pass.draw(6);
+      
+      // Particles - draw all instances, shader culls dead particles
+      const pipeline = this.gpuParticlePipelines[state.particle.blendMode] || this.gpuParticlePipelines.screen;
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, this.gpuParticleBindGroup);
+      pass.setVertexBuffer(0, mesh.vertex);
+      pass.setIndexBuffer(mesh.index, "uint16");
+      pass.drawIndexed(mesh.indexCount, this.maxParticles);
+      
+      pass.end();
+    }
+    
+    // DOF passes (same as CPU path)
+    if (dofEnabled) {
+      // CoC pass
+      {
+        const pass = commandEncoder.beginRenderPass({
+          colorAttachments: [{
+            view: this.cocTexture.createView(),
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+        });
+        pass.setPipeline(this.cocPipeline);
+        pass.setBindGroup(0, this.cocBindGroup);
+        pass.draw(3);
+        pass.end();
+      }
+      
+      // Blur far
+      {
+        const pass = commandEncoder.beginRenderPass({
+          colorAttachments: [{
+            view: this.blurFarTexture.createView(),
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+        });
+        pass.setPipeline(this.blurFarPipeline);
+        pass.setBindGroup(0, this.blurFarBindGroup);
+        pass.draw(3);
+        pass.end();
+      }
+      
+      // Blur near
+      this.device.queue.writeBuffer(this.blurBuffer, 0, blurNearData);
+      {
+        const pass = commandEncoder.beginRenderPass({
+          colorAttachments: [{
+            view: this.blurNearTexture.createView(),
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+        });
+        pass.setPipeline(this.blurNearPipeline);
+        pass.setBindGroup(0, this.blurNearBindGroup);
+        pass.draw(3);
+        pass.end();
+      }
+      
+      // Composite
+      {
+        const pass = commandEncoder.beginRenderPass({
+          colorAttachments: [{
+            view: this.context.getCurrentTexture().createView(),
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+        });
+        pass.setPipeline(this.compositePipeline);
+        pass.setBindGroup(0, this.compositeBindGroup);
+        pass.draw(3);
+        pass.end();
+      }
+    } else {
+      // Direct composite
+      const pass = commandEncoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.context.getCurrentTexture().createView(),
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+      });
+      pass.setPipeline(this.compositePipeline);
+      pass.setBindGroup(0, this.compositeBindGroup);
+      pass.draw(3);
+      pass.end();
+    }
+    
+    this.device.queue.submit([commandEncoder.finish()]);
   }
 
   async createMeshBuffers() {
@@ -719,6 +1163,9 @@ export class Renderer {
         { binding: 5, resource: { buffer: this.compositeBuffer } },
       ],
     });
+    
+    // GPU particle bind group (doesn't depend on resolution but recreate for consistency)
+    this.createGpuParticleBindGroup();
   }
 
   /**

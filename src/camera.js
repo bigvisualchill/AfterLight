@@ -115,15 +115,19 @@ export function updateCamera(timeSeconds, canvasWidth, canvasHeight) {
   state.camera.forward[1] = -view[6];
   state.camera.forward[2] = -view[10];
 
-  return buildUniformData(timeSeconds);
+  // Calculate size scale for GPU particle rendering
+  const sizeScale = worldUnitsPerPixelAt(state.emitter.pos, canvasHeight);
+  
+  return buildUniformData(timeSeconds, sizeScale);
 }
 
 /**
  * Build the uniform data array for the particle shader
  * @param {number} timeSeconds - Current time
+ * @param {number} sizeScale - World units per pixel for GPU particle size scaling
  * @returns {Float32Array} 52-float uniform array
  */
-function buildUniformData(timeSeconds) {
+function buildUniformData(timeSeconds, sizeScale = 1.0) {
   const uniformData = new Float32Array(52);
   
   const lightWorld = normalizeVec3(state.shading.lightPos);
@@ -161,9 +165,9 @@ function buildUniformData(timeSeconds) {
   uniformData[35] = 0;
   uniformData[36] = 0.0;
   uniformData[37] = state.perf.lowCostRender ? 0 : (state.shading.enabled ? 1 : 0);
-  // Keep particle output premultiplied for all blend modes.
-  uniformData[38] = 1.0;
-  // No blend-mode-specific dimming.
+  // Size scale for GPU particle rendering (world units per pixel)
+  uniformData[38] = sizeScale;
+  // Unused
   uniformData[39] = 1.0;
   // shadingParams: flat shading, rim intensity, spec intensity, unused
   uniformData[40] = state.shading.style === "flat" ? 1 : 0;

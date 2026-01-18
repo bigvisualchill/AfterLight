@@ -44,6 +44,23 @@ struct VertexOut {
 @group(0) @binding(1) var noiseTexture: texture_2d<f32>;
 @group(0) @binding(2) var noiseSampler: sampler;
 
+// GPU particle storage buffer (for vs_gpu path)
+struct Particle {
+  pos: vec3<f32>,       // 0-2: position
+  age: f32,             // 3: current age
+  vel: vec3<f32>,       // 4-6: velocity
+  life: f32,            // 7: max lifetime
+  seed: f32,            // 8: random seed for rotation
+  spin: f32,            // 9: spin rate
+  size: f32,            // 10: size multiplier
+  flags: u32,           // 11: alive flag
+  axis: vec3<f32>,      // 12-14: rotation axis
+  _pad1: f32,           // 15: padding
+  color: vec3<f32>,     // 16-18: particle color
+  _pad2: f32,           // 19: padding
+};
+@group(0) @binding(3) var<storage, read> particles: array<Particle>;
+
 fn rotateByAxisAngle(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
   let c = cos(angle);
   let s = sin(angle);
@@ -84,6 +101,92 @@ fn vs_main(input: VertexIn) -> VertexOut {
   out.lifeT = input.lifeT;
   out.opacity = input.instOpacity;
   out.color = input.instColor;
+  return out;
+}
+
+// GPU path vertex shader - reads particle data from storage buffer
+struct VertexInGPU {
+  @location(0) pos: vec3<f32>,
+  @location(1) normal: vec3<f32>,
+  @location(11) bary: vec3<f32>,
+};
+
+// Size curve evaluation (matches CPU behavior)
+fn evalSizeCurve(t: f32) -> f32 {
+  // Default curve: starts small, grows, shrinks at end
+  let rampUp = smoothstep(0.0, 0.1, t);
+  let rampDown = 1.0 - smoothstep(0.7, 1.0, t);
+  return rampUp * rampDown;
+}
+
+// Opacity curve evaluation
+fn evalOpacityCurve(t: f32) -> f32 {
+  // Fade in quickly, fade out at end
+  let fadeIn = smoothstep(0.0, 0.05, t);
+  let fadeOut = 1.0 - smoothstep(0.8, 1.0, t);
+  return fadeIn * fadeOut;
+}
+
+@vertex
+fn vs_gpu(input: VertexInGPU, @builtin(instance_index) instanceIdx: u32) -> VertexOut {
+  var out: VertexOut;
+  
+  let p = particles[instanceIdx];
+  
+  // Skip dead particles - position outside clip space so GPU culls them
+  if (p.flags == 0u) {
+    out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0); // Outside NDC [-1,1], will be clipped
+    out.normal = vec3<f32>(0.0, 1.0, 0.0);
+    out.lifeT = 1.0;
+    out.localPos = vec3<f32>(0.0);
+    out.opacity = 0.0;
+    out.color = vec3<f32>(0.0);
+    out.worldPos = vec3<f32>(0.0);
+    out.bary = vec3<f32>(1.0);
+    return out;
+  }
+  
+  let lifeT = clamp(p.age / p.life, 0.0, 1.0);
+  let sizeCurve = evalSizeCurve(lifeT);
+  // Scale by worldUnitsPerPixel (stored in motionBlurPad.z)
+  let worldScale = uniforms.motionBlurPad.z;
+  let instSize = p.size * sizeCurve * worldScale;
+  let instOpacity = evalOpacityCurve(lifeT);
+  
+  if (uniforms.shapeParams.x > 0.5) {
+    // Billboard (2D shape)
+    let right = uniforms.cameraRight.xyz;
+    let up = uniforms.cameraUp.xyz;
+    let angle = p.seed + uniforms.lightColorTime.w * p.spin;
+    let c = cos(angle);
+    let s = sin(angle);
+    let spinRight = right * c + up * s;
+    let spinUp = -right * s + up * c;
+    let billboard = (spinRight * input.pos.x + spinUp * input.pos.y) * instSize;
+    let world = p.pos + billboard;
+    out.position = uniforms.viewProj * vec4<f32>(world, 1.0);
+    out.normal = normalize(cross(right, up));
+    out.localPos = vec3<f32>(input.pos.xy, 0.0);
+    out.worldPos = world;
+    out.bary = vec3<f32>(1.0, 1.0, 1.0);
+  } else {
+    // 3D shape
+    let axis = normalize(p.axis);
+    let angle = p.seed + uniforms.lightColorTime.w * p.spin;
+    let rotated = rotateByAxisAngle(input.pos, axis, angle);
+    let velDir = normalize(p.vel + vec3<f32>(0.0001)); // Avoid zero
+    let stretch = velDir * length(p.vel) * uniforms.motionBlurPad.x;
+    let world = p.pos + rotated * instSize + stretch * dot(rotated, velDir);
+    out.position = uniforms.viewProj * vec4<f32>(world, 1.0);
+    out.normal = rotateByAxisAngle(input.normal, axis, angle);
+    out.localPos = input.pos;
+    out.worldPos = world;
+    out.bary = input.bary;
+  }
+  
+  out.lifeT = lifeT;
+  out.opacity = instOpacity;
+  out.color = p.color;
   return out;
 }
 

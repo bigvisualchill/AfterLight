@@ -37,7 +37,7 @@ export const GIZMO_HANDLE_SIZE = 14;
 export const state = {
   // Particle settings
   particle: {
-    capacity: 10000,
+    capacity: 1000000,
     emissionRate: 40,
     initialSpeed: 1.0,
     lifeSeconds: 2.0,

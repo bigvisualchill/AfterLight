@@ -383,7 +383,8 @@ export function initElements() {
         field.value = formatField(parseFloat(input.value));
         return;
       }
-      v = clamp(v, min, max);
+      // Only clamp to minimum (prevent negative values), allow exceeding slider max via text input
+      v = Math.max(min, v);
       v = roundToStep(v, step, min);
       input.value = String(v);
       input.dispatchEvent(new Event("input", { bubbles: true }));

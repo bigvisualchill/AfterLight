@@ -1,18 +1,185 @@
 // Main entry point - Orchestrates particle system application
 // All logic is delegated to focused modules
-// Now supports GPU-based particle simulation via WebGPU compute shaders
 
-import { state, particles, serializeState, PERF_UPDATE_MS, PERF_GPU_SAMPLE_MS, RECORDING_DT } from './src/state.js';
+import { state, particles, serializeState, PERF_UPDATE_MS, PERF_GPU_SAMPLE_MS, RECORDING_DT, spawnAccum, setSpawnAccum } from './src/state.js';
 import { Renderer } from './src/renderer.js';
 import { updateCamera, computeDOFParams, worldUnitsPerPixelAt, view } from './src/camera.js';
-import { spawnAt, updateParticles, emitParticles, sortParticlesByDepth, buildInstanceData, getEmissionDirection, computeVortexAxis } from './src/particles.js';
+import { spawnAt, updateParticles, emitParticles, sortParticlesByDepth, buildInstanceData } from './src/particles.js';
 import { updateAnimations } from './src/animation.js';
 import { renderAllGizmos, updateGizmoHover, startGizmoDrag, updateGizmoDrag, endGizmoDrag } from './src/gizmos.js';
 import { initElements, setupEventListeners, syncUIFromState, updatePerfHud, setPerfHudVisible, setupCurveEditor, setupGradientEditor } from './src/ui-bindings.js';
 import { startVideoRecording, downloadVideo, downloadHtml } from './exportUtils.js';
+import { rotateX, rotateY, rotateZ, normalizeVec3 } from './src/math.js';
 
-// GPU simulation mode flag
-let useGPUSim = true;
+// ============================================================================
+// GPU Simulation State
+// ============================================================================
+
+let useGPUSim = true; // Use GPU particle simulation by default
+let gpuFrameIndex = 0;
+let gpuEmitterPrevPos = [0, 0, 0];
+let gpuSpawnAccum = 0;
+
+// ============================================================================
+// GPU Param Builders
+// ============================================================================
+
+function applyEmitterRotation(point) {
+  const ax = (state.emitter.directionRotX * Math.PI) / 180;
+  const ay = (state.emitter.directionRotY * Math.PI) / 180;
+  const az = (state.emitter.directionRotZ * Math.PI) / 180;
+  let p = rotateX(point, ax);
+  p = rotateY(p, ay);
+  p = rotateZ(p, az);
+  return p;
+}
+
+function getEmissionDirection() {
+  let dir = [0, 1, 0];
+  dir = applyEmitterRotation(dir);
+  return normalizeVec3(dir);
+}
+
+function computeVortexAxis() {
+  const ax = (state.vortex.rotX * Math.PI) / 180;
+  const ay = (state.vortex.rotY * Math.PI) / 180;
+  const az = (state.vortex.rotZ * Math.PI) / 180;
+  let axis = [0, 1, 0];
+  axis = rotateX(axis, ax);
+  axis = rotateY(axis, ay);
+  axis = rotateZ(axis, az);
+  return normalizeVec3(axis);
+}
+
+/**
+ * Build simulation uniform data for GPU compute
+ */
+function buildSimParams(dt, time) {
+  const buffer = new ArrayBuffer(128);
+  const f32 = new Float32Array(buffer);
+  const u32 = new Uint32Array(buffer);
+  
+  // dt, time, gravity, drag (16 bytes)
+  f32[0] = dt;
+  f32[1] = time;
+  f32[2] = state.forces.gravity;
+  f32[3] = state.forces.drag;
+  
+  // wind (vec3), noiseEnabled (u32) (16 bytes)
+  f32[4] = state.forces.wind[0];
+  f32[5] = state.forces.wind[1];
+  f32[6] = state.forces.wind[2];
+  u32[7] = state.forces.noiseEnabled ? 1 : 0;
+  
+  // noiseMode, turbulenceStrength, turbulenceScale, curlStrength (16 bytes)
+  u32[8] = state.forces.mode === "curl" ? 1 : 0;
+  f32[9] = state.forces.turbulenceStrength;
+  f32[10] = state.forces.turbulenceScale;
+  f32[11] = state.forces.curlStrength;
+  
+  // curlScale, vortexEnabled, vortexStrength, vortexRadius (16 bytes)
+  f32[12] = state.forces.curlScale;
+  u32[13] = state.vortex.enabled ? 1 : 0;
+  f32[14] = state.vortex.strength;
+  f32[15] = state.vortex.radius;
+  
+  // vortexPos (vec3), attractorEnabled (u32) (16 bytes)
+  f32[16] = state.vortex.pos[0];
+  f32[17] = state.vortex.pos[1];
+  f32[18] = state.vortex.pos[2];
+  u32[19] = state.attractor.enabled ? 1 : 0;
+  
+  // vortexAxis (vec3), attractorStrength (16 bytes)
+  const vortexAxis = computeVortexAxis();
+  f32[20] = vortexAxis[0];
+  f32[21] = vortexAxis[1];
+  f32[22] = vortexAxis[2];
+  f32[23] = state.attractor.strength;
+  
+  // attractorPos (vec3), attractorRadius (16 bytes)
+  f32[24] = state.attractor.pos[0];
+  f32[25] = state.attractor.pos[1];
+  f32[26] = state.attractor.pos[2];
+  f32[27] = state.attractor.radius;
+  
+  // groundEnabled, groundLevel, bounce, emitterPosY (16 bytes)
+  u32[28] = state.forces.groundEnabled ? 1 : 0;
+  f32[29] = state.forces.groundLevel;
+  f32[30] = state.forces.bounce;
+  f32[31] = state.emitter.pos[1];
+  
+  return f32;
+}
+
+/**
+ * Build emit uniform data for GPU compute
+ */
+function buildEmitParams(spawnCount, dt) {
+  const buffer = new ArrayBuffer(128);
+  const f32 = new Float32Array(buffer);
+  const u32 = new Uint32Array(buffer);
+  
+  // Emitter velocity (for particle inheritance)
+  const emitterVel = [
+    (state.emitter.pos[0] - gpuEmitterPrevPos[0]) / Math.max(dt, 0.001),
+    (state.emitter.pos[1] - gpuEmitterPrevPos[1]) / Math.max(dt, 0.001),
+    (state.emitter.pos[2] - gpuEmitterPrevPos[2]) / Math.max(dt, 0.001),
+  ];
+  
+  // emitterPos (vec3), spawnCount (u32) (16 bytes)
+  f32[0] = state.emitter.pos[0];
+  f32[1] = state.emitter.pos[1];
+  f32[2] = state.emitter.pos[2];
+  u32[3] = spawnCount;
+  
+  // emitterPrevPos (vec3), emitterSize (f32) (16 bytes)
+  f32[4] = gpuEmitterPrevPos[0];
+  f32[5] = gpuEmitterPrevPos[1];
+  f32[6] = gpuEmitterPrevPos[2];
+  f32[7] = state.emitter.size;
+  
+  // emitterShape, emitFrom, direction, coneAngle (16 bytes)
+  const shapeMap = { point: 0, sphere: 1, box: 2, plane: 3, line: 4 };
+  u32[8] = shapeMap[state.emitter.shape] || 0;
+  u32[9] = state.emitter.emitFrom === "surface" ? 1 : 0;
+  const dirMap = { directional: 0, spherical: 1, outward: 2 };
+  u32[10] = dirMap[state.emitter.direction] || 0;
+  f32[11] = state.emitter.coneAngle;
+  
+  // baseDir (vec3), initialSpeed (16 bytes)
+  const baseDir = getEmissionDirection();
+  f32[12] = baseDir[0];
+  f32[13] = baseDir[1];
+  f32[14] = baseDir[2];
+  f32[15] = state.particle.initialSpeed;
+  
+  // speedRandom, life, lifeRandom, sizeBase (16 bytes)
+  f32[16] = state.emitter.speedRandom;
+  f32[17] = state.particle.lifeSeconds;
+  f32[18] = state.particle.lifeRandom;
+  f32[19] = state.particle.size;
+  
+  // sizeRandom, spinBase, spinRandom, colorMode (16 bytes)
+  f32[20] = state.particle.sizeRandom;
+  f32[21] = (state.particle.spinRateX + state.particle.spinRateY + state.particle.spinRateZ) / 3;
+  f32[22] = state.particle.spinRandom;
+  const colorModeMap = { solid: 0, random: 1, gradient: 2 };
+  u32[23] = colorModeMap[state.particle.colorMode] || 0;
+  
+  // solidColor (vec3), frameIndex (u32) (16 bytes)
+  f32[24] = state.particle.solidColor[0];
+  f32[25] = state.particle.solidColor[1];
+  f32[26] = state.particle.solidColor[2];
+  u32[27] = gpuFrameIndex;
+  
+  // emitterVelocity (vec3), emitterVelocityAmount (16 bytes)
+  f32[28] = emitterVel[0];
+  f32[29] = emitterVel[1];
+  f32[30] = emitterVel[2];
+  f32[31] = state.animation.emitterVelocityAmount;
+  
+  return f32;
+}
 
 // ============================================================================
 // Application State
@@ -63,11 +230,6 @@ async function init() {
   
   // Initialize instance data buffer (for CPU fallback mode)
   instanceData = new Float32Array(state.particle.capacity * 17);
-  
-  // Initialize GPU particle system
-  if (useGPUSim) {
-    renderer.initGPUParticles();
-  }
   
   // Initialize UI
   initElements();
@@ -135,13 +297,9 @@ function setupKeyboardShortcuts() {
       state.perf.lowCostRender = !state.perf.lowCostRender;
       e.preventDefault();
     } else if (e.key === "p" || e.key === "P") {
-      // Toggle between GPU and CPU particle simulation
+      // Toggle GPU/CPU particle simulation
       useGPUSim = !useGPUSim;
-      console.log(`Particle simulation mode: ${useGPUSim ? 'GPU' : 'CPU'}`);
-      // Clear CPU particles when switching to GPU mode
-      if (useGPUSim) {
-        particles.length = 0;
-      }
+      console.log(`Particle simulation: ${useGPUSim ? 'GPU' : 'CPU'}`);
       e.preventDefault();
     }
   });
@@ -321,23 +479,55 @@ function frame(now) {
   // Get camera parameters
   const uniformData = updateCamera(now / 1000, canvas.width, canvas.height);
   
+  // Build background uniforms
+  const bgUniformData = buildBackgroundUniforms();
+  
+  // Build DOF uniforms
+  let cocData = null, blurData = null, compositeData = null, blurNearData = null;
+  const dofActive = state.camera.viewEnabled && state.dof.enabled && !state.perf.lowCostRender;
+  if (dofActive) {
+    const dofParams = computeDOFParams(dt, canvas.width, canvas.height);
+    cocData = dofParams.cocUniformData;
+    blurData = dofParams.blurUniformData;
+    compositeData = dofParams.compositeUniformData;
+    blurNearData = new Float32Array(blurData);
+    blurNearData[4] = 1.0; // isNearPass
+  }
+  
+  // Update GPU buffers
+  renderer.updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData, dofActive);
+  
   let particleCount = 0;
   
-  if (useGPUSim && renderer.isGPUSimEnabled()) {
-    // GPU simulation mode
-    const baseUnitsPerPixel = worldUnitsPerPixelAt(state.emitter.pos, canvas.clientHeight);
+  if (useGPUSim) {
+    // GPU particle simulation path
     
-    // Build simulation parameters
+    // Calculate spawn count
+    const spawnDelta = state.particle.emissionRate * dt;
+    gpuSpawnAccum += spawnDelta;
+    // Get integer spawn count, keeping fractional part for next frame
+    const spawnCount = Math.max(0, Math.floor(gpuSpawnAccum));
+    gpuSpawnAccum -= spawnCount;
+    
+    // Build compute params
     const simParams = buildSimParams(dt, now);
-    const emitParams = buildEmitParams(dt, baseUnitsPerPixel);
+    const emitParams = buildEmitParams(spawnCount, dt);
     
-    // Run GPU compute passes
-    renderer.runParticleCompute(simParams, emitParams);
+    // Run GPU compute (emit + simulate)
+    const mesh = renderer.getCurrentMeshBuffer();
+    renderer.runParticleCompute(simParams, emitParams, spawnCount, mesh);
     
-    // For perf display, we don't know exact count in GPU mode
-    particleCount = -1; // Signal GPU mode
+    // Update state for next frame
+    gpuEmitterPrevPos = [...state.emitter.pos];
+    gpuFrameIndex++;
+    
+    // Render using GPU particle buffer
+    renderer.renderGPU(dofActive, blurNearData);
+    
+    // For perf display, estimate particle count (GPU doesn't report back easily)
+    particleCount = Math.min(gpuFrameIndex * 100, state.particle.capacity);
   } else {
-    // CPU simulation mode (fallback)
+    // CPU particle simulation path (fallback)
     emitParticles(dt);
     updateParticles(dt, now);
     ensureCapacityForParticles();
@@ -352,30 +542,10 @@ function frame(now) {
     
     // Update instance buffer
     renderer.updateInstances(instanceData, particleCount);
-  }
-  
-  // Build background uniforms (includes gradient stops)
-  const bgUniformData = buildBackgroundUniforms();
-  
-  // Build DOF uniforms
-  let cocData = null, blurData = null, compositeData = null, blurNearData = null;
-  const dofActive = state.camera.viewEnabled && state.dof.enabled && !state.perf.lowCostRender;
-  if (dofActive) {
-    const dofParams = computeDOFParams(dt, canvas.width, canvas.height);
-    cocData = dofParams.cocUniformData;
-    blurData = dofParams.blurUniformData;
-    compositeData = dofParams.compositeUniformData;
     
-    // Near blur pass uniform (same as far but with isNearPass = 1)
-    blurNearData = new Float32Array(blurData);
-    blurNearData[4] = 1.0; // isNearPass
+    // Render using CPU instance buffer
+    renderer.render(particleCount, dofActive, blurNearData);
   }
-  
-  // Update GPU buffers
-  renderer.updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData, dofActive);
-  
-  // Render
-  renderer.render(particleCount, dofActive, blurNearData, useGPUSim);
   
   // Render gizmos
   renderAllGizmos(gizmoCtx, gizmoCanvas.width, gizmoCanvas.height);
@@ -383,90 +553,6 @@ function frame(now) {
   // Update performance HUD
   const frameEnd = performance.now();
   updatePerformanceMetrics(frameStart, frameEnd, particleCount, now);
-}
-
-// ============================================================================
-// GPU Simulation Parameter Building
-// ============================================================================
-
-// Spawn accumulator for GPU mode
-let gpuSpawnAccum = 0;
-
-function buildSimParams(dt, now) {
-  // Compute vortex axis from rotation
-  const vortexAxis = computeVortexAxis();
-  
-  return {
-    dt,
-    time: now,
-    gravity: state.forces.gravity,
-    drag: state.forces.drag,
-    wind: state.forces.wind,
-    noiseEnabled: state.forces.noiseEnabled,
-    noiseMode: state.forces.mode,
-    turbulenceStrength: state.forces.turbulenceStrength,
-    turbulenceScale: state.forces.turbulenceScale,
-    curlStrength: state.forces.curlStrength,
-    curlScale: state.forces.curlScale,
-    vortexEnabled: state.vortex.enabled,
-    vortexStrength: state.vortex.strength,
-    vortexRadius: state.vortex.radius,
-    vortexPos: state.vortex.pos,
-    vortexAxis: vortexAxis,
-    attractorEnabled: state.attractor.enabled,
-    attractorStrength: state.attractor.strength,
-    attractorRadius: state.attractor.radius,
-    attractorPos: state.attractor.pos,
-    groundEnabled: state.forces.groundEnabled,
-    groundLevel: state.forces.groundLevel,
-    bounce: state.forces.bounce,
-    emitterPosY: state.emitter.pos[1],
-  };
-}
-
-function buildEmitParams(dt, baseUnitsPerPixel) {
-  // Calculate spawn count using accumulator (same logic as CPU)
-  const dtEmit = Math.min(dt, 1 / 60);
-  const lambda = state.particle.emissionRate * dtEmit;
-  gpuSpawnAccum += lambda;
-  const spawnCount = Math.floor(gpuSpawnAccum);
-  if (spawnCount > 0) {
-    gpuSpawnAccum -= spawnCount;
-  }
-  
-  // Get emission direction
-  const baseDir = getEmissionDirection();
-  
-  // Calculate particle size in world units
-  const sizePixels = state.particle.size * 5;
-  const sizeBase = sizePixels * baseUnitsPerPixel;
-  
-  // Average spin rate
-  const spinBase = (state.particle.spinRateX + state.particle.spinRateY + state.particle.spinRateZ) / 3;
-  
-  return {
-    emitterPos: state.emitter.pos,
-    emitterPrevPos: state.emitter.frameStartPos,
-    spawnCount,
-    emitterSize: state.emitter.size,
-    emitterShape: state.emitter.shape,
-    emitFrom: state.emitter.emitFrom,
-    direction: state.emitter.direction,
-    coneAngle: state.emitter.coneAngle,
-    baseDir,
-    initialSpeed: state.particle.initialSpeed,
-    speedRandom: state.emitter.speedRandom,
-    life: state.particle.lifeSeconds,
-    lifeRandom: state.particle.lifeRandom,
-    sizeBase,
-    sizeRandom: state.particle.sizeRandom,
-    spinBase,
-    spinRandom: state.particle.spinRandom,
-    colorMode: state.particle.colorMode,
-    solidColor: state.particle.solidColor,
-    emitterVelocity: state.animation.emitterVelocityAffected ? state.emitter.velocity : [0, 0, 0],
-    emitterVelocityAmount: state.animation.emitterVelocityAmount,
-  };
 }
 
 // ============================================================================
