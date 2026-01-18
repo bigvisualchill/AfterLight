@@ -76,6 +76,95 @@ export function initElements() {
     container.insertBefore(groups[i], container.firstChild);
   }
 
+  // Emitter panel: group-level collapsibles only.
+  const emitterPanel = document.querySelector('.panel[data-panel="emitter"]');
+  if (emitterPanel) {
+    const emitterContainer = emitterPanel.querySelector(".panel-content");
+    if (emitterContainer) {
+      const makeGroup = (id, titleText, nodes) => {
+        const setting = document.createElement("div");
+        setting.className = "control setting";
+        setting.id = id;
+
+        const label = document.createElement("label");
+        const left = document.createElement("span");
+        left.className = "label-left";
+
+        const collapseBtn = document.createElement("button");
+        collapseBtn.type = "button";
+        collapseBtn.className = "collapse-indicator";
+        const collapseIcon = document.createElement("span");
+        collapseIcon.textContent = "+";
+        collapseBtn.appendChild(collapseIcon);
+
+        left.appendChild(collapseBtn);
+        left.appendChild(document.createTextNode(titleText));
+        label.appendChild(left);
+
+        const body = document.createElement("div");
+        body.className = "control-body";
+
+        for (const n of nodes) body.appendChild(n);
+
+        setting.appendChild(label);
+        setting.appendChild(body);
+        return setting;
+      };
+
+      const takeControlBySelector = (selector) => {
+        const el = emitterContainer.querySelector(selector);
+        if (!el) return null;
+        return el.closest(".control");
+      };
+
+      const emitterShapeControl = takeControlBySelector("#emitterShape");
+      const emitterSizeControl = takeControlBySelector("#emitterSize");
+      const emitFromControl = takeControlBySelector("#emitFrom");
+
+      const emissionRateControl = takeControlBySelector("#emissionRate");
+      const emitterPosControl = takeControlBySelector("#emitterPosX");
+      const emitterRotationControl = takeControlBySelector("#directionXWheel");
+      const emissionDirectionControl = takeControlBySelector("#emissionDirection");
+      const particleVelocityControl = takeControlBySelector("#initialSpeed");
+      const particleSpinControl = takeControlBySelector("#spinRate2d") || takeControlBySelector("#spinRateX");
+
+      const emitterGroups = [];
+      const shapeNodes = [emitterShapeControl, emitterSizeControl, emitFromControl].filter(Boolean);
+      if (shapeNodes.length) emitterGroups.push(makeGroup("emitterShapeGroup", "Emitter Shape", shapeNodes));
+      if (emissionRateControl) emitterGroups.push(makeGroup("emissionRateGroup", "Emission Rate", [emissionRateControl]));
+      if (emitterPosControl) emitterGroups.push(makeGroup("emitterPositionGroup", "Emitter Position", [emitterPosControl]));
+      if (emitterRotationControl) emitterGroups.push(makeGroup("emitterRotationGroup", "Emitter Rotation", [emitterRotationControl]));
+      if (emissionDirectionControl) emitterGroups.push(makeGroup("emissionDirectionGroup", "Emission Direction", [emissionDirectionControl]));
+      if (particleVelocityControl) emitterGroups.push(makeGroup("particleVelocityGroup", "Particle Velocity", [particleVelocityControl]));
+      if (particleSpinControl) emitterGroups.push(makeGroup("particleSpinGroup", "Particle Spin", [particleSpinControl]));
+
+      for (const ctrl of [
+        emitterShapeControl,
+        emitterSizeControl,
+        emitFromControl,
+        emissionRateControl,
+        emitterPosControl,
+        emitterRotationControl,
+        emissionDirectionControl,
+        particleVelocityControl,
+        particleSpinControl,
+      ]) {
+        ctrl?.remove?.();
+      }
+
+      // Remove empty wrapper stacks if they exist (prevents blank gaps).
+      const maybeRemoveIfEmpty = (id) => {
+        const el = emitterContainer.querySelector(`#${id}`);
+        if (el && el.children.length === 0) el.remove();
+      };
+      maybeRemoveIfEmpty("emitterShapeControls");
+
+      for (let i = emitterGroups.length - 1; i >= 0; i--) {
+        emitterContainer.insertBefore(emitterGroups[i], emitterContainer.firstChild);
+      }
+    }
+  }
+
   // Convert `...Val` spans (for range inputs) into editable numeric fields.
   const settingsRoot = document.querySelector(".settings-panel-container");
   if (!settingsRoot) return;
