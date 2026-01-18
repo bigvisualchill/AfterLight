@@ -106,9 +106,9 @@ export function spawnAt(mx, my, count = 1, lerpFactor = 0, dt = 0) {
     let velDir;
     if (state.emitter.direction === "spherical") {
       velDir = randomSphereDirection();
-    } else if (state.emitter.direction === "outward" && state.emitter.shape === "sphere") {
-      const len = Math.hypot(offset[0], offset[1], offset[2]) || 1;
-      velDir = [offset[0] / len, offset[1] / len, offset[2] / len];
+    } else if (state.emitter.direction === "outward") {
+      const len = Math.hypot(offset[0], offset[1], offset[2]);
+      velDir = len > 1e-6 ? [offset[0] / len, offset[1] / len, offset[2] / len] : randomSphereDirection();
     } else {
       // Directional emission with cone
       const baseDir = getEmissionDirection();
