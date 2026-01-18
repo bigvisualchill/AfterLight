@@ -224,6 +224,65 @@ export function initElements() {
     }
   }
 
+  // Shading panel: group-level collapsibles for common lighting controls.
+  const shadingPanel = document.querySelector('.panel[data-panel="shading"]');
+  if (shadingPanel) {
+    const shadingContainer = shadingPanel.querySelector("#shadingControls");
+    if (shadingContainer) {
+      const makeGroup = (id, titleText, nodes) => {
+        const setting = document.createElement("div");
+        setting.className = "control setting";
+        setting.id = id;
+
+        const label = document.createElement("label");
+        const left = document.createElement("span");
+        left.className = "label-left";
+
+        const collapseBtn = document.createElement("button");
+        collapseBtn.type = "button";
+        collapseBtn.className = "collapse-indicator";
+        const collapseIcon = document.createElement("span");
+        collapseIcon.textContent = "+";
+        collapseBtn.appendChild(collapseIcon);
+
+        left.appendChild(collapseBtn);
+        left.appendChild(document.createTextNode(titleText));
+        label.appendChild(left);
+
+        const body = document.createElement("div");
+        body.className = "control-body";
+        for (const n of nodes) body.appendChild(n);
+
+        setting.appendChild(label);
+        setting.appendChild(body);
+        return setting;
+      };
+
+      const takeControlBySelector = (selector) => {
+        const el = shadingContainer.querySelector(selector);
+        if (!el) return null;
+        return el.closest(".control");
+      };
+
+      const wrapControlAsGroup = (groupId, titleText, controlEl) => {
+        if (!controlEl) return;
+        const placeholder = document.createComment("setting-placeholder");
+        const parent = controlEl.parentElement;
+        if (!parent) return;
+        parent.insertBefore(placeholder, controlEl);
+        const group = makeGroup(groupId, titleText, [controlEl]);
+        placeholder.replaceWith(group);
+      };
+
+      wrapControlAsGroup("lightPositionGroup", "Light Position", takeControlBySelector("#lightPosX"));
+      wrapControlAsGroup("lightColorGroup", "Light Color", takeControlBySelector("#baseColor"));
+      wrapControlAsGroup("lightIntensityGroup", "Light Intensity", takeControlBySelector("#lightIntensity"));
+      wrapControlAsGroup("shadingStyleGroup", "Shading Style", takeControlBySelector("#shadingStyle"));
+      wrapControlAsGroup("rimLightingGroup", "Rim Lighting", takeControlBySelector("#rimIntensity"));
+      wrapControlAsGroup("specularGroup", "Specular", takeControlBySelector("#specIntensity"));
+    }
+  }
+
   // Convert `...Val` spans (for range inputs) into editable numeric fields.
   const settingsRoot = document.querySelector(".settings-panel-container");
   if (!settingsRoot) return;
@@ -320,7 +379,10 @@ export function syncUIFromState() {
     const hex = rgbToHex(rgb);
     if (el) el.value = hex;
     const display = document.getElementById(id + "Val");
-    if (display) display.textContent = hex;
+    if (display) {
+      if (display instanceof HTMLInputElement) display.value = hex;
+      else display.textContent = hex;
+    }
   };
 
   const setPill = (id, on) => {
@@ -684,12 +746,52 @@ export function setupEventListeners(callbacks = {}) {
     const el = document.getElementById(id);
     if (!el) return;
     const display = document.getElementById(id + "Val");
-    if (display) display.textContent = el.value;
+    if (display) {
+      if (display instanceof HTMLInputElement) display.value = el.value;
+      else display.textContent = el.value;
+    }
     el.addEventListener("input", (e) => {
       const hex = e.target.value;
       setter(hexToRgb(hex));
-      if (display) display.textContent = hex;
+      if (display) {
+        if (display instanceof HTMLInputElement) display.value = hex;
+        else display.textContent = hex;
+      }
     });
+
+    if (display instanceof HTMLInputElement) {
+      const normalizeHex = (s) => {
+        if (typeof s !== "string") return null;
+        const raw = s.trim();
+        const m = raw.match(/^#?[0-9a-fA-F]{6}$/);
+        if (!m) return null;
+        return raw.startsWith("#") ? raw.toLowerCase() : `#${raw.toLowerCase()}`;
+      };
+
+      const commit = () => {
+        const normalized = normalizeHex(display.value);
+        if (!normalized) {
+          display.value = el.value;
+          return;
+        }
+        el.value = normalized;
+        setter(hexToRgb(normalized));
+        display.value = normalized;
+      };
+
+      display.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          commit();
+          display.blur();
+        } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          display.value = el.value;
+          display.blur();
+        }
+      });
+      display.addEventListener("blur", commit);
+    }
   };
   
   // Helper to setup buttons
