@@ -722,6 +722,7 @@ export class Renderer {
    * @returns {Object} Mesh buffer with vertex, index, and indexCount
    */
   getCurrentMeshBuffer() {
+    if (state.perf.lowCostRender) return this.meshBuffers.quad;
     const shape = state.particle.shape;
     if (shape === "sphere") {
       const subdiv = Math.min(4, Math.max(0, state.particle.sphereSubdivisions));

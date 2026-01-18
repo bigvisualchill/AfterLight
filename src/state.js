@@ -239,6 +239,9 @@ export const state = {
     gpuMsEstimated: false,
     gpuLabel: "",
     hudVisible: false,
+    hudMode: "basic", // "basic" | "gpu"
+    gpuEmaMs: 0,
+    lowCostRender: false,
     gpuInFlight: false,
     lastGpuSample: 0,
     worstFrame: 0,

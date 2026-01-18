@@ -140,9 +140,15 @@ function buildUniformData(timeSeconds) {
   uniformData[21] = state.shading.lightColor[1];
   uniformData[22] = state.shading.lightColor[2];
   uniformData[23] = timeSeconds;
-  uniformData[24] = state.particle.shape === "square" ? 1 : state.particle.shape === "circle" ? 2 : 0;
-  uniformData[25] =
-    state.particle.shape === "sphere" ? 1 : state.particle.shape === "icosahedron" ? 2 : state.particle.shape === "cube" ? 3 : 0;
+  if (state.perf.lowCostRender) {
+    // Force 2D billboards for diagnostic low-cost mode.
+    uniformData[24] = 2; // circle
+    uniformData[25] = 0;
+  } else {
+    uniformData[24] = state.particle.shape === "square" ? 1 : state.particle.shape === "circle" ? 2 : 0;
+    uniformData[25] =
+      state.particle.shape === "sphere" ? 1 : state.particle.shape === "icosahedron" ? 2 : state.particle.shape === "cube" ? 3 : 0;
+  }
   uniformData[26] = state.particle.noiseStrength;
   uniformData[27] = state.particle.softness;
   uniformData[28] = view[0];
@@ -154,7 +160,7 @@ function buildUniformData(timeSeconds) {
   uniformData[34] = view[9];
   uniformData[35] = 0;
   uniformData[36] = 0.0;
-  uniformData[37] = state.shading.enabled ? 1 : 0;
+  uniformData[37] = state.perf.lowCostRender ? 0 : (state.shading.enabled ? 1 : 0);
   // Keep particle output premultiplied for all blend modes.
   uniformData[38] = 1.0;
   // No blend-mode-specific dimming.

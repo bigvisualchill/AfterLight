@@ -119,6 +119,12 @@ function setupKeyboardShortcuts() {
       state.perf.hudVisible = !state.perf.hudVisible;
       setPerfHudVisible(state.perf.hudVisible);
       e.preventDefault();
+    } else if (e.key === "g" || e.key === "G") {
+      state.perf.hudMode = state.perf.hudMode === "gpu" ? "basic" : "gpu";
+      e.preventDefault();
+    } else if (e.key === "l" || e.key === "L") {
+      state.perf.lowCostRender = !state.perf.lowCostRender;
+      e.preventDefault();
     }
   });
 }
@@ -300,7 +306,7 @@ function frame(now) {
   
   // Build DOF uniforms
   let cocData = null, blurData = null, compositeData = null, blurNearData = null;
-  const dofActive = state.camera.viewEnabled && state.dof.enabled;
+  const dofActive = state.camera.viewEnabled && state.dof.enabled && !state.perf.lowCostRender;
   if (dofActive) {
     const dofParams = computeDOFParams(dt, canvas.width, canvas.height);
     cocData = dofParams.cocUniformData;
@@ -408,7 +414,12 @@ function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now) {
     const p = renderer.timestampSupported ? renderer.readGpuTime() : renderer.readGpuWorkDoneMs();
     state.perf.gpuMsEstimated = !renderer.timestampSupported;
     p.then((gpuMs) => {
-      if (gpuMs !== null) state.perf.gpuMs = gpuMs;
+      if (gpuMs !== null) {
+        state.perf.gpuMs = gpuMs;
+        const prev = state.perf.gpuEmaMs || 0;
+        const a = 0.2;
+        state.perf.gpuEmaMs = prev > 0 ? prev * (1 - a) + gpuMs * a : gpuMs;
+      }
       state.perf.gpuInFlight = false;
     }).catch(() => {
       state.perf.gpuInFlight = false;

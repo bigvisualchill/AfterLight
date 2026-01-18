@@ -1273,14 +1273,20 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
   const particleEl = document.getElementById("perfParticles");
   const cpuEl = document.getElementById("perfCpu");
   const gpuEl = document.getElementById("perfGpu");
+  const modeEl = document.getElementById("perfMode");
+  const pmsEl = document.getElementById("perfPms");
+  const lowEl = document.getElementById("perfLow");
   const cpuBar = document.getElementById("perfCpuBar");
   const gpuBar = document.getElementById("perfGpuBar");
 
   if (fpsEl) fpsEl.textContent = Number.isFinite(fps) ? fps.toFixed(0) : "--";
   if (particleEl) particleEl.textContent = String(particleCount ?? 0);
+  if (modeEl) modeEl.textContent = state.perf.hudMode === "gpu" ? "gpu" : "basic";
+  if (lowEl) lowEl.textContent = state.perf.lowCostRender ? "on" : "off";
 
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
-  const barColor = (t) => (t < 0.55 ? "#22c55e" : t < 0.85 ? "#f59e0b" : "#ef4444");
+  const barColorCpu = (t) => (t < 0.55 ? "#22c55e" : t < 0.85 ? "#f59e0b" : "#ef4444");
+  const barColorGpu = (t) => (t < 0.7 ? "#22c55e" : t < 1.0 ? "#f59e0b" : "#ef4444");
 
   // Normalize against 60 FPS frame budget
   const budgetMs = 1000 / 60;
@@ -1289,15 +1295,16 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
   if (cpuEl) cpuEl.textContent = Number.isFinite(cpuMs) ? `${cpuMs.toFixed(1)}ms` : "--";
   if (cpuBar) {
     cpuBar.style.width = `${Math.max(2, cpuT * 100)}%`;
-    cpuBar.style.backgroundColor = barColor(cpuT);
+    cpuBar.style.backgroundColor = barColorCpu(cpuT);
   }
 
-  const gpuKnown = gpuMs !== null && gpuMs !== undefined && Number.isFinite(gpuMs) && gpuMs > 0;
-  const gpuT = clamp01((gpuKnown ? gpuMs : 0) / budgetMs);
+  const gpuBase = state.perf.hudMode === "gpu" ? (state.perf.gpuEmaMs || gpuMs) : gpuMs;
+  const gpuKnown = gpuBase !== null && gpuBase !== undefined && Number.isFinite(gpuBase) && gpuBase > 0;
+  const gpuT = clamp01((gpuKnown ? gpuBase : 0) / budgetMs);
   if (gpuEl) {
     if (gpuKnown) {
       const prefix = state.perf.gpuMsEstimated ? "~" : "";
-      gpuEl.textContent = `${prefix}${gpuMs.toFixed(1)}ms`;
+      gpuEl.textContent = `${prefix}${gpuBase.toFixed(1)}ms`;
     } else if (typeof state.perf.gpuLabel === "string" && state.perf.gpuLabel.trim()) {
       const label = state.perf.gpuLabel.trim();
       gpuEl.textContent = label.length > 14 ? `${label.slice(0, 13)}…` : label;
@@ -1307,7 +1314,17 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
   }
   if (gpuBar) {
     gpuBar.style.width = `${Math.max(2, (gpuKnown ? gpuT : 0) * 100)}%`;
-    gpuBar.style.backgroundColor = gpuKnown ? barColor(gpuT) : "rgba(255,255,255,0.25)";
+    gpuBar.style.backgroundColor = gpuKnown ? barColorGpu(gpuT) : "rgba(255,255,255,0.25)";
+  }
+
+  if (pmsEl) {
+    if (gpuKnown) {
+      const denom = Math.max(0.1, gpuBase);
+      const v = (particleCount ?? 0) / denom;
+      pmsEl.textContent = v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2);
+    } else {
+      pmsEl.textContent = "--";
+    }
   }
 }
 

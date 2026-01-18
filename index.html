@@ -1924,20 +1924,32 @@
   <body>
     <canvas id="gfx"></canvas>
     <canvas id="gizmo"></canvas>
-    <div id="perfHud" class="perf-hud" aria-hidden="true">
-      <div><span class="label">FPS</span> <span id="perfFps">--</span></div>
-      <div class="perf-row">
-        <span class="label">CPU</span>
-        <div class="perf-bar"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
-        <span id="perfCpu" class="perf-value">--</span>
-      </div>
-      <div class="perf-row">
-        <span class="label">GPU</span>
-        <div class="perf-bar"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
-        <span id="perfGpu" class="perf-value">--</span>
-      </div>
-      <div><span class="label">Particles</span> <span id="perfParticles">0</span></div>
-    </div>
+	    <div id="perfHud" class="perf-hud" aria-hidden="true">
+	      <div class="perf-row">
+	        <span class="label">HUD</span>
+	        <span id="perfMode" class="perf-value">basic</span>
+	      </div>
+	      <div><span class="label">FPS</span> <span id="perfFps">--</span></div>
+	      <div class="perf-row">
+	        <span class="label">CPU</span>
+	        <div class="perf-bar"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
+	        <span id="perfCpu" class="perf-value">--</span>
+	      </div>
+	      <div class="perf-row">
+	        <span class="label">GPU</span>
+	        <div class="perf-bar"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
+	        <span id="perfGpu" class="perf-value">--</span>
+	      </div>
+	      <div class="perf-row">
+	        <span class="label">P/ms</span>
+	        <span id="perfPms" class="perf-value">--</span>
+	      </div>
+	      <div class="perf-row">
+	        <span class="label">Low</span>
+	        <span id="perfLow" class="perf-value">off</span>
+	      </div>
+	      <div><span class="label">Particles</span> <span id="perfParticles">0</span></div>
+	    </div>
     <div class="settings-sidebar">
       <button class="sidebar-btn" data-panel="particles" title="Particles">
         <svg viewBox="0 0 24 24" fill="currentColor">
