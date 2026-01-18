@@ -583,10 +583,35 @@
         min-width: 0;
         white-space: normal;
       }
-      .inline-toggle .pill-toggle {
-        margin-left: auto;
-        min-width: 54px;
-      }
+	      .inline-toggle .pill-toggle {
+	        margin-left: auto;
+	        min-width: 54px;
+	      }
+	      .mini-btn-group {
+	        display: inline-flex;
+	        align-items: center;
+	        gap: 6px;
+	        margin-left: auto;
+	      }
+	      .mini-btn {
+	        width: 22px;
+	        height: 22px;
+	        border-radius: 6px;
+	        border: 1px solid rgba(255, 255, 255, 0.18);
+	        background: rgba(255, 255, 255, 0.08);
+	        color: rgba(220, 232, 244, 0.9);
+	        font: 12px/1 "SF Mono", Menlo, monospace;
+	        cursor: pointer;
+	        padding: 0;
+	      }
+	      .mini-btn:hover {
+	        background: rgba(255, 255, 255, 0.14);
+	        border-color: rgba(255, 255, 255, 0.26);
+	      }
+	      .mini-btn:disabled {
+	        opacity: 0.45;
+	        cursor: default;
+	      }
       .select-control {
         margin-bottom: 0;
       }
@@ -2070,10 +2095,16 @@
               <option value="random">Random From Gradient</option>
               <option value="solid">Solid Color</option>
             </select>
-            <div id="gradientControl">
-              <label for="colorGradientCanvas">Color Gradient</label>
-              <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
-          </div>
+	            <div id="gradientControl">
+	              <div class="inline-toggle">
+	                <label for="colorGradientCanvas">Color Gradient</label>
+	                <div class="mini-btn-group">
+	                  <button type="button" class="mini-btn" data-gradient="colorGradientCanvas" data-action="add" aria-label="Add gradient point">+</button>
+	                  <button type="button" class="mini-btn" data-gradient="colorGradientCanvas" data-action="remove" aria-label="Delete selected gradient point">−</button>
+	                </div>
+	              </div>
+	              <canvas id="colorGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
+	          </div>
             <div id="solidColorControl">
             <label for="solidColor">Solid Color <span id="solidColorVal"></span></label>
             <input id="solidColor" type="color" />
@@ -2523,12 +2554,18 @@
             <label for="bgSolidColor">Background Color</label>
             <input id="bgSolidColor" type="color" value="#000000" />
           </div>
-          <div id="bgGradientControls" class="control-stack" style="display: none;">
-            <div class="control">
-              <label for="bgGradientCanvas">Color Gradient</label>
-              <canvas id="bgGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
-            </div>
-          </div>
+	          <div id="bgGradientControls" class="control-stack" style="display: none;">
+	            <div class="control">
+	              <div class="inline-toggle">
+	                <label for="bgGradientCanvas">Color Gradient</label>
+	                <div class="mini-btn-group">
+	                  <button type="button" class="mini-btn" data-gradient="bgGradientCanvas" data-action="add" aria-label="Add gradient point">+</button>
+	                  <button type="button" class="mini-btn" data-gradient="bgGradientCanvas" data-action="remove" aria-label="Delete selected gradient point">−</button>
+	                </div>
+	              </div>
+	              <canvas id="bgGradientCanvas" class="gradient-editor" width="240" height="36"></canvas>
+	            </div>
+	          </div>
           <div id="bgLinearControls" class="control" style="display: none;">
             <label for="bgLinearDirection">Gradient Direction</label>
             <select id="bgLinearDirection">

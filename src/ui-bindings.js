@@ -1473,6 +1473,28 @@ export function setupGradientEditor(canvasId, points, onChange) {
   let selectedPoint = -1;
   let isDragging = false;
   let activePointerId = null;
+  let didMove = false;
+  let dragStart = null;
+
+  const MARKER_HEIGHT = 20;
+  const TRI_HALF = 4;
+  const HIT_RADIUS = 8;
+  const EPS = 0.001;
+
+  const addBtn = document.querySelector(`[data-gradient="${canvasId}"][data-action="add"]`);
+  const removeBtn = document.querySelector(`[data-gradient="${canvasId}"][data-action="remove"]`);
+
+  const colorPicker = document.createElement("input");
+  colorPicker.type = "color";
+  colorPicker.style.position = "absolute";
+  colorPicker.style.left = "-9999px";
+  colorPicker.style.top = "0";
+  document.body.appendChild(colorPicker);
+
+  const cleanup = () => {
+    if (colorPicker.parentElement) colorPicker.parentElement.removeChild(colorPicker);
+  };
+  window.addEventListener("beforeunload", cleanup, { once: true });
 
   const toCanvasCoords = (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -1494,20 +1516,20 @@ export function setupGradientEditor(canvasId, points, onChange) {
       gradient.addColorStop(p.x, rgbToHex(p.color));
     }
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, w, h - 20);
+    ctx.fillRect(0, 0, w, h - MARKER_HEIGHT);
     
     // Draw markers
     ctx.fillStyle = "#222";
-    ctx.fillRect(0, h - 20, w, 20);
+    ctx.fillRect(0, h - MARKER_HEIGHT, w, MARKER_HEIGHT);
     
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       const px = p.x * w;
       
       ctx.beginPath();
-      ctx.moveTo(px, h - 20);
-      ctx.lineTo(px - 6, h);
-      ctx.lineTo(px + 6, h);
+      ctx.moveTo(px, h - MARKER_HEIGHT);
+      ctx.lineTo(px - TRI_HALF, h);
+      ctx.lineTo(px + TRI_HALF, h);
       ctx.closePath();
       ctx.fillStyle = rgbToHex(p.color);
       ctx.fill();
@@ -1515,18 +1537,81 @@ export function setupGradientEditor(canvasId, points, onChange) {
       ctx.lineWidth = i === selectedPoint ? 2 : 1;
       ctx.stroke();
     }
+    updateButtons();
   }
   
   function getPointAt(mx, my) {
     const h = canvas.height;
-    if (my < h - 25) return -1;
+    if (my < h - (MARKER_HEIGHT + 5)) return -1;
     
     for (let i = 0; i < points.length; i++) {
       const px = points[i].x * canvas.width;
-      if (Math.abs(mx - px) < 10) return i;
+      if (Math.abs(mx - px) < HIT_RADIUS) return i;
     }
     return -1;
   }
+
+  function updateButtons() {
+    if (removeBtn instanceof HTMLButtonElement) {
+      const canDelete = selectedPoint > 0 && selectedPoint < points.length - 1 && points.length > 2;
+      removeBtn.disabled = !canDelete;
+    }
+  }
+
+  function openColorChooser(idx) {
+    if (idx < 0 || idx >= points.length) return;
+    colorPicker.value = rgbToHex(points[idx].color);
+    const applyHex = (hex) => {
+      points[idx].color = hexToRgb(hex);
+      onChange(points);
+      draw();
+    };
+
+    const onInput = (e) => applyHex(e.target.value);
+    const onChangeDone = (e) => {
+      applyHex(e.target.value);
+      colorPicker.removeEventListener("input", onInput);
+      colorPicker.removeEventListener("change", onChangeDone);
+    };
+
+    colorPicker.addEventListener("input", onInput);
+    colorPicker.addEventListener("change", onChangeDone);
+
+    if (typeof colorPicker.showPicker === "function") colorPicker.showPicker();
+    else colorPicker.click();
+  }
+
+  function addPoint() {
+    const idx = selectedPoint;
+    let x;
+
+    if (idx >= 0) {
+      const left = idx === points.length - 1 ? points[idx - 1].x : points[idx].x;
+      const right = idx === points.length - 1 ? points[idx].x : points[idx + 1].x;
+      x = clamp((left + right) * 0.5, 0, 1);
+    } else {
+      x = 0.5;
+    }
+
+    const color = evalGradient(points, x);
+    points.push({ x: clamp(x, 0, 1), color });
+    points.sort((a, b) => a.x - b.x);
+    selectedPoint = points.reduce((bestIdx, p, i) => (Math.abs(p.x - x) < Math.abs(points[bestIdx].x - x) ? i : bestIdx), 0);
+    onChange(points);
+    draw();
+  }
+
+  function removeSelected() {
+    if (!(selectedPoint > 0 && selectedPoint < points.length - 1)) return;
+    if (points.length <= 2) return;
+    points.splice(selectedPoint, 1);
+    selectedPoint = Math.max(0, Math.min(selectedPoint - 1, points.length - 1));
+    onChange(points);
+    draw();
+  }
+
+  if (addBtn) addBtn.addEventListener("click", addPoint);
+  if (removeBtn) removeBtn.addEventListener("click", removeSelected);
   
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button !== 0) return;
@@ -1536,12 +1621,15 @@ export function setupGradientEditor(canvasId, points, onChange) {
     if (selectedPoint >= 0) {
       isDragging = true;
       activePointerId = e.pointerId;
+      didMove = false;
+      dragStart = { x: mx, y: my };
       canvas.setPointerCapture(e.pointerId);
-    } else if (my >= canvas.height - 25 && e.detail === 2) {
+      draw();
+    } else if (my >= canvas.height - (MARKER_HEIGHT + 5) && e.detail === 2) {
       // Double click - add point
       const x = mx / canvas.width;
       const color = evalGradient(points, x);
-      points.push({ x: clamp(x, 0.01, 0.99), color });
+      points.push({ x: clamp(x, 0, 1), color });
       points.sort((a, b) => a.x - b.x);
       onChange(points);
       draw();
@@ -1554,14 +1642,12 @@ export function setupGradientEditor(canvasId, points, onChange) {
     if (!canvas.hasPointerCapture(e.pointerId)) return;
 
     const { x: mx } = toCanvasCoords(e);
+
+    if (dragStart && Math.abs(mx - dragStart.x) > 2) didMove = true;
     
-    // First and last points can't move
-    if (selectedPoint > 0 && selectedPoint < points.length - 1) {
-      const selectedObj = points[selectedPoint];
-      selectedObj.x = clamp(mx / canvas.width, 0.01, 0.99);
-      points.sort((a, b) => a.x - b.x);
-      selectedPoint = points.indexOf(selectedObj);
-    }
+    const leftBound = selectedPoint === 0 ? 0 : Math.min(1, points[selectedPoint - 1].x + EPS);
+    const rightBound = selectedPoint === points.length - 1 ? 1 : Math.max(0, points[selectedPoint + 1].x - EPS);
+    points[selectedPoint].x = clamp(mx / canvas.width, leftBound, rightBound);
     
     onChange(points);
     draw();
@@ -1571,36 +1657,18 @@ export function setupGradientEditor(canvasId, points, onChange) {
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
     isDragging = false;
     activePointerId = null;
+    dragStart = null;
   };
 
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
   
-  canvas.addEventListener("dblclick", (e) => {
-    const { x: mx, y: my } = toCanvasCoords(e);
-    
-    const idx = getPointAt(mx, my);
-    if (idx >= 0) {
-      // Open color picker for this point
-      const input = document.createElement("input");
-      input.type = "color";
-      input.value = rgbToHex(points[idx].color);
-      input.style.position = "absolute";
-      input.style.left = "-9999px";
-      document.body.appendChild(input);
-      
-      input.addEventListener("input", (e) => {
-        points[idx].color = hexToRgb(e.target.value);
-        onChange(points);
-        draw();
-      });
-      
-      input.addEventListener("change", () => {
-        document.body.removeChild(input);
-      });
-      
-      input.click();
-    }
+  canvas.addEventListener("pointerup", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (selectedPoint < 0) return;
+    if (didMove) return;
+    openColorChooser(selectedPoint);
   });
   
   canvas.addEventListener("contextmenu", (e) => {
@@ -1617,5 +1685,10 @@ export function setupGradientEditor(canvasId, points, onChange) {
   });
   
   draw();
-  return { draw, setPoints: (newPoints) => { points.length = 0; points.push(...newPoints); draw(); } };
+  return {
+    draw,
+    setPoints: (newPoints) => { points.length = 0; points.push(...newPoints); draw(); },
+    addPoint,
+    removeSelected,
+  };
 }
