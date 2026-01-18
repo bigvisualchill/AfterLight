@@ -2206,36 +2206,37 @@
         </div>
       </div>
 
-      <div class="panel" data-panel="forces">
-        <div class="panel-header">
-          <span>Forces</span>
-        </div>
-        <div class="panel-content">
-          <div class="control">
-            <label for="forcesEnabled">Forces</label>
-            <button id="forcesEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
-          </div>
-          <div id="forcesControls" class="control-stack hidden-controls">
-            <div class="control">
-              <label>Noise</label>
-              <label for="forceMode">Noise Mode</label>
-              <select id="forceMode">
-                <option value="turbulence">Turbulence</option>
-                <option value="curl">Curl Noise</option>
-              </select>
-              <div id="turbulenceControls">
-                <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
-                <input id="turbulence" type="range" min="0" max="100" step="0.1" data-default="1.2" />
-                <label for="turbulenceScale">Turbulence Scale <span id="turbulenceScaleVal"></span></label>
-                <input id="turbulenceScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
-              </div>
-              <div id="curlControls">
-                <label for="curlStrength">Curl Strength <span id="curlStrengthVal"></span></label>
-                <input id="curlStrength" type="range" min="0" max="100" step="0.1" data-default="1.2" />
-                <label for="curlScale">Curl Scale <span id="curlScaleVal"></span></label>
-                <input id="curlScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
-              </div>
-            </div>
+	      <div class="panel" data-panel="forces">
+	        <div class="panel-header">
+	          <span>Forces</span>
+	        </div>
+	        <div class="panel-content">
+	          <div id="forcesControls" class="control-stack">
+	            <div class="control">
+	              <div class="inline-toggle" style="margin-bottom: 8px;">
+	                <label for="noiseEnabled">Noise</label>
+	                <button id="noiseEnabled" class="pill-toggle" type="button" data-state="on">On</button>
+	              </div>
+	              <div id="noiseControls">
+	                <label for="forceMode">Noise Mode</label>
+	                <select id="forceMode">
+	                  <option value="turbulence">Turbulence</option>
+	                  <option value="curl">Curl Noise</option>
+	                </select>
+	                <div id="turbulenceControls">
+	                  <label for="turbulence">Turbulence <span id="turbulenceVal"></span></label>
+	                  <input id="turbulence" type="range" min="0" max="100" step="0.1" data-default="1.2" />
+	                  <label for="turbulenceScale">Turbulence Scale <span id="turbulenceScaleVal"></span></label>
+	                  <input id="turbulenceScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
+	                </div>
+	                <div id="curlControls">
+	                  <label for="curlStrength">Curl Strength <span id="curlStrengthVal"></span></label>
+	                  <input id="curlStrength" type="range" min="0" max="100" step="0.1" data-default="1.2" />
+	                  <label for="curlScale">Curl Scale <span id="curlScaleVal"></span></label>
+	                  <input id="curlScale" type="range" min="0.1" max="100" step="0.1" data-default="0.8" />
+	                </div>
+	              </div>
+	            </div>
             <div class="control">
               <label for="vortexEnabled">Vortex</label>
               <button id="vortexEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
@@ -2292,33 +2293,33 @@
               </div>
             </div>
           </div>
-            <div class="control">
-              <label for="attractorEnabled">Attractor</label>
-              <button id="attractorEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
-            </div>
-            <div id="attractorControls" class="control-stack">
-              <div class="control">
-                <label for="attractorStrength">Attractor Strength <span id="attractorStrengthVal"></span></label>
-                <input id="attractorStrength" type="range" min="0" max="100" step="0.1" data-default="0" />
-              </div>
-              <div class="control">
-                <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
-                <input id="attractorRadius" type="range" min="0" max="100" step="0.1" data-default="0" />
-              </div>
-              </div>
-            <div id="attractorPositionPanel" class="control">
-              <label>Attractor Position</label>
-              <label for="attractorPosX">X <span id="attractorPosXVal"></span></label>
-                <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
-              <label for="attractorPosY">Y <span id="attractorPosYVal"></span></label>
-                <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
-              <label for="attractorPosZ">Z <span id="attractorPosZVal"></span></label>
-                <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
-              <div class="inline-toggle">
-                <label for="attractorGizmo">Show Attractor Gizmo</label>
-                <button id="attractorGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
-              </div>
-            </div>
+	            <div class="control">
+	              <label for="attractorEnabled">Attractor</label>
+	              <button id="attractorEnabled" class="pill-toggle" type="button" data-state="off">Off</button>
+	            </div>
+	            <div id="attractorControls" class="control-stack">
+	              <div class="control">
+	                <label for="attractorStrength">Attractor Strength <span id="attractorStrengthVal"></span></label>
+	                <input id="attractorStrength" type="range" min="0" max="100" step="0.1" data-default="0" />
+	              </div>
+	              <div class="control">
+	                <label for="attractorRadius">Attractor Radius <span id="attractorRadiusVal"></span></label>
+	                <input id="attractorRadius" type="range" min="0" max="100" step="0.1" data-default="0" />
+	              </div>
+	              <div id="attractorPositionPanel" class="control">
+	                <label>Attractor Position</label>
+	                <label for="attractorPosX">X <span id="attractorPosXVal"></span></label>
+	                  <input id="attractorPosX" type="range" min="-2" max="2" step="0.05" data-default="0" />
+	                <label for="attractorPosY">Y <span id="attractorPosYVal"></span></label>
+	                  <input id="attractorPosY" type="range" min="-2" max="2" step="0.05" data-default="0" />
+	                <label for="attractorPosZ">Z <span id="attractorPosZVal"></span></label>
+	                  <input id="attractorPosZ" type="range" min="-2" max="2" step="0.05" data-default="0" />
+	                <div class="inline-toggle">
+	                  <label for="attractorGizmo">Show Attractor Gizmo</label>
+	                  <button id="attractorGizmo" class="pill-toggle" type="button" data-state="off">Off</button>
+	                </div>
+	              </div>
+	            </div>
             <div class="control">
               <label for="gravity">Gravity <span id="gravityVal"></span></label>
               <input id="gravity" type="range" min="-100" max="100" step="0.1" data-default="-0.2" />

@@ -310,7 +310,7 @@ export function syncUIFromState() {
   setSlider("spinRandom", state.particle.spinRandom, 1);
 
   // Forces
-  setPill("forcesEnabled", state.forces.enabled);
+  setPill("noiseEnabled", state.forces.noiseEnabled);
   setSelect("forceMode", state.forces.mode);
   setSlider("turbulence", state.forces.turbulenceStrength, 1);
   setSlider("turbulenceScale", state.forces.turbulenceScale, 1);
@@ -424,7 +424,7 @@ export function syncUIFromState() {
   updateShapeVisibility();
   updateColorModeVisibility();
   updateDirectionVisibility();
-  updateForcesVisibility();
+  updateNoiseVisibility();
   updateForceModeVisibility();
   updateVortexVisibility();
   updateAttractorVisibility();
@@ -542,10 +542,20 @@ function updateDirectionVisibility() {
 
 function updateForcesVisibility() {
   const el = document.getElementById("forcesControls");
-  if (el) el.classList.toggle("hidden-controls", !state.forces.enabled);
+  if (el) el.classList.remove("hidden-controls");
+}
+
+function updateNoiseVisibility() {
+  const el = document.getElementById("noiseControls");
+  if (el) el.style.display = state.forces.noiseEnabled ? "" : "none";
 }
 
 function updateForceModeVisibility() {
+  if (!state.forces.noiseEnabled) {
+    setDisplay("turbulenceControls", false);
+    setDisplay("curlControls", false);
+    return;
+  }
   const isTurbulence = state.forces.mode === "turbulence";
   setDisplay("turbulenceControls", isTurbulence);
   setDisplay("curlControls", !isTurbulence);
@@ -746,8 +756,13 @@ export function setupEventListeners(callbacks = {}) {
   setupSlider("spinRateZ", (v) => { state.particle.spinRateZ = v; }, 1);
   setupSlider("spinRandom", (v) => { state.particle.spinRandom = v; }, 1);
   
-  // Forces
-  setupPill("forcesEnabled", () => state.forces.enabled, (v) => { state.forces.enabled = v; }, () => updateForcesVisibility());
+  updateForcesVisibility();
+
+  // Noise
+  setupPill("noiseEnabled", () => state.forces.noiseEnabled, (v) => { state.forces.noiseEnabled = v; }, () => {
+    updateNoiseVisibility();
+    updateForceModeVisibility();
+  });
   setupSelect("forceMode", (v) => { state.forces.mode = v; }, updateForceModeVisibility);
   setupSlider("turbulence", (v) => { state.forces.turbulenceStrength = v; }, 1);
   setupSlider("turbulenceScale", (v) => { state.forces.turbulenceScale = v; }, 1);

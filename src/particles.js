@@ -189,38 +189,40 @@ export function updateParticles(dt, now) {
       continue;
     }
 
-    if (state.forces.enabled) {
+    {
       const t = now * 0.0003 + p.seed;
       
-      // Turbulence or curl noise
-      if (state.forces.mode === "turbulence") {
-        const nx = noise3(
-          p.pos[0] * state.forces.turbulenceScale + t,
-          p.pos[1] * state.forces.turbulenceScale,
-          p.pos[2] * state.forces.turbulenceScale,
-        );
-        const ny = noise3(
-          p.pos[0] * state.forces.turbulenceScale,
-          p.pos[1] * state.forces.turbulenceScale - t,
-          p.pos[2] * state.forces.turbulenceScale,
-        );
-        const nz = noise3(
-          p.pos[0] * state.forces.turbulenceScale,
-          p.pos[1] * state.forces.turbulenceScale,
-          p.pos[2] * state.forces.turbulenceScale + t,
-        );
-        p.vel[0] += (nx * 2 - 1) * state.forces.turbulenceStrength * dt;
-        p.vel[1] += (ny * 2 - 1) * state.forces.turbulenceStrength * dt;
-        p.vel[2] += (nz * 2 - 1) * state.forces.turbulenceStrength * dt;
-      } else if (state.forces.mode === "curl") {
-        const c = curlNoise(
-          p.pos[0] * state.forces.curlScale + t, 
-          p.pos[1] * state.forces.curlScale, 
-          p.pos[2] * state.forces.curlScale - t
-        );
-        p.vel[0] += c[0] * state.forces.curlStrength * dt;
-        p.vel[1] += c[1] * state.forces.curlStrength * dt;
-        p.vel[2] += c[2] * state.forces.curlStrength * dt;
+      // Turbulence or curl noise (optional)
+      if (state.forces.noiseEnabled) {
+        if (state.forces.mode === "turbulence") {
+          const nx = noise3(
+            p.pos[0] * state.forces.turbulenceScale + t,
+            p.pos[1] * state.forces.turbulenceScale,
+            p.pos[2] * state.forces.turbulenceScale,
+          );
+          const ny = noise3(
+            p.pos[0] * state.forces.turbulenceScale,
+            p.pos[1] * state.forces.turbulenceScale - t,
+            p.pos[2] * state.forces.turbulenceScale,
+          );
+          const nz = noise3(
+            p.pos[0] * state.forces.turbulenceScale,
+            p.pos[1] * state.forces.turbulenceScale,
+            p.pos[2] * state.forces.turbulenceScale + t,
+          );
+          p.vel[0] += (nx * 2 - 1) * state.forces.turbulenceStrength * dt;
+          p.vel[1] += (ny * 2 - 1) * state.forces.turbulenceStrength * dt;
+          p.vel[2] += (nz * 2 - 1) * state.forces.turbulenceStrength * dt;
+        } else if (state.forces.mode === "curl") {
+          const c = curlNoise(
+            p.pos[0] * state.forces.curlScale + t, 
+            p.pos[1] * state.forces.curlScale, 
+            p.pos[2] * state.forces.curlScale - t
+          );
+          p.vel[0] += c[0] * state.forces.curlStrength * dt;
+          p.vel[1] += c[1] * state.forces.curlStrength * dt;
+          p.vel[2] += c[2] * state.forces.curlStrength * dt;
+        }
       }
 
       // Vortex force
@@ -298,7 +300,7 @@ export function updateParticles(dt, now) {
     p.pos[2] += p.vel[2] * dt;
 
     // Ground collision
-    if (state.forces.enabled && state.forces.groundEnabled && 
+    if (state.forces.groundEnabled && 
         state.emitter.pos[1] >= state.forces.groundLevel && 
         p.pos[1] < state.forces.groundLevel) {
       p.pos[1] = state.forces.groundLevel;

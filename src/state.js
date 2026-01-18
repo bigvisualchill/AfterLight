@@ -77,8 +77,9 @@ export const state = {
 
   // Forces settings
   forces: {
-    enabled: false,
+    enabled: true,
     mode: "turbulence",
+    noiseEnabled: true,
     gravity: GRAVITY,
     wind: [0.0, 0.0, 0.0],
     drag: 0.0,
@@ -391,6 +392,7 @@ export function serializeState() {
     attractorAnimZ: { ...state.animation.attractorZ },
 
     // Forces settings
+    noiseEnabled: state.forces.noiseEnabled,
     forceMode: state.forces.mode,
     turbulenceStrength: state.forces.turbulenceStrength,
     turbulenceScale: state.forces.turbulenceScale,
@@ -413,7 +415,6 @@ export function serializeState() {
     groundEnabled: state.forces.groundEnabled,
     groundLevel: state.forces.groundLevel,
     bounce: state.forces.bounce,
-    forcesEnabled: state.forces.enabled,
 
     // Shading settings
     shadingEnabled: state.shading.enabled,
@@ -502,6 +503,7 @@ export function applySnapshot(snapshot) {
     attractorAnimX: (v) => { if (v && typeof v === "object") Object.assign(state.animation.attractorX, v); },
     attractorAnimY: (v) => { if (v && typeof v === "object") Object.assign(state.animation.attractorY, v); },
     attractorAnimZ: (v) => { if (v && typeof v === "object") Object.assign(state.animation.attractorZ, v); },
+    noiseEnabled: (v) => { state.forces.noiseEnabled = Boolean(v); },
     forceMode: (v) => { if (typeof v === "string") state.forces.mode = v; },
     turbulenceStrength: (v) => { if (Number.isFinite(v)) state.forces.turbulenceStrength = v; },
     turbulenceScale: (v) => { if (Number.isFinite(v)) state.forces.turbulenceScale = v; },
@@ -524,7 +526,6 @@ export function applySnapshot(snapshot) {
     groundEnabled: (v) => { state.forces.groundEnabled = Boolean(v); },
     groundLevel: (v) => { if (Number.isFinite(v)) state.forces.groundLevel = v; },
     bounce: (v) => { if (Number.isFinite(v)) state.forces.bounce = v; },
-    forcesEnabled: (v) => { state.forces.enabled = Boolean(v); },
     shadingEnabled: (v) => { state.shading.enabled = Boolean(v); },
     shadingStyle: (v) => { if (typeof v === "string") state.shading.style = v; },
     lightIntensity: (v) => { if (Number.isFinite(v)) state.shading.lightIntensity = v; },
@@ -558,4 +559,6 @@ export function applySnapshot(snapshot) {
     const setter = setters[key];
     if (setter) setter(value);
   }
+
+  state.forces.enabled = true;
 }
