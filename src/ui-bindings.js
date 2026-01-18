@@ -1301,8 +1301,6 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
     } else if (typeof state.perf.gpuLabel === "string" && state.perf.gpuLabel.trim()) {
       const label = state.perf.gpuLabel.trim();
       gpuEl.textContent = label.length > 14 ? `${label.slice(0, 13)}…` : label;
-    } else if (state.perf.gpuTimingSupported === false) {
-      gpuEl.textContent = "n/a";
     } else {
       gpuEl.textContent = "--";
     }

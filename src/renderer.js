@@ -896,4 +896,20 @@ export class Renderer {
   async readGpuTime() {
     return null;
   }
+
+  /**
+   * Estimate GPU work time by waiting for submitted work to complete.
+   * This is not as accurate as timestamp queries, but avoids vsync-wait artifacts.
+   * @returns {Promise<number|null>} Estimated GPU time in ms
+   */
+  async readGpuWorkDoneMs() {
+    if (!this.device) return null;
+    const t0 = performance.now();
+    try {
+      await this.device.queue.onSubmittedWorkDone();
+      return Math.max(0, performance.now() - t0);
+    } catch {
+      return null;
+    }
+  }
 }

@@ -235,7 +235,6 @@ export const state = {
     count: 0,
     lastUpdate: 0,
     gpuMs: 0,
-    gpuAccum: 0,
     gpuTimingSupported: false,
     gpuMsEstimated: false,
     gpuLabel: "",

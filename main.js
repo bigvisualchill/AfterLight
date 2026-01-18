@@ -261,8 +261,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   
   // Calculate delta time
-  const frameIntervalMs = now - lastFrame;
-  let dt = frameIntervalMs / 1000;
+  let dt = (now - lastFrame) / 1000;
   lastFrame = now;
   
   // Clamp dt to prevent huge jumps
@@ -325,7 +324,7 @@ function frame(now) {
   
   // Update performance HUD
   const frameEnd = performance.now();
-  updatePerformanceMetrics(frameStart, frameEnd, particleCount, now, frameIntervalMs);
+  updatePerformanceMetrics(frameStart, frameEnd, particleCount, now);
 }
 
 // ============================================================================
@@ -384,40 +383,34 @@ function buildBackgroundUniforms() {
 // Performance Metrics
 // ============================================================================
 
-function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now, frameIntervalMs) {
+function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now) {
   const cpuMs = frameEnd - frameStart;
-  const gpuEstMs = Math.max(0, (Number.isFinite(frameIntervalMs) ? frameIntervalMs : 0) - cpuMs);
   
   state.perf.accum += cpuMs;
-  state.perf.gpuAccum += gpuEstMs;
   state.perf.count++;
   
   if (now - state.perf.lastUpdate > PERF_UPDATE_MS) {
     const avgCpu = state.perf.accum / state.perf.count;
     const fps = 1000 / (now - state.perf.lastFrame) * state.perf.count;
-    const avgGpuEst = state.perf.gpuAccum / state.perf.count;
-    const gpuForHud = renderer.timestampSupported ? state.perf.gpuMs : avgGpuEst;
-
-    state.perf.gpuMsEstimated = !renderer.timestampSupported;
-    updatePerfHud(fps, particleCount, avgCpu, gpuForHud);
+    updatePerfHud(fps, particleCount, avgCpu, state.perf.gpuMs);
     
     state.perf.accum = 0;
-    state.perf.gpuAccum = 0;
     state.perf.count = 0;
     state.perf.lastUpdate = now;
     state.perf.lastFrame = now;
   }
   
   // Sample GPU time periodically
-  if (renderer.timestampSupported && !state.perf.gpuInFlight && now - state.perf.lastGpuSample > PERF_GPU_SAMPLE_MS) {
+  if (!state.perf.gpuInFlight && now - state.perf.lastGpuSample > PERF_GPU_SAMPLE_MS) {
     state.perf.gpuInFlight = true;
     state.perf.lastGpuSample = now;
     
-    renderer.readGpuTime().then(gpuMs => {
-      if (gpuMs !== null) {
-        state.perf.gpuMs = gpuMs;
-        state.perf.gpuMsEstimated = false;
-      }
+    const p = renderer.timestampSupported ? renderer.readGpuTime() : renderer.readGpuWorkDoneMs();
+    state.perf.gpuMsEstimated = !renderer.timestampSupported;
+    p.then((gpuMs) => {
+      if (gpuMs !== null) state.perf.gpuMs = gpuMs;
+      state.perf.gpuInFlight = false;
+    }).catch(() => {
       state.perf.gpuInFlight = false;
     });
   }
