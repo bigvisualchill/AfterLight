@@ -1296,7 +1296,8 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
   const gpuT = clamp01((gpuKnown ? gpuMs : 0) / budgetMs);
   if (gpuEl) {
     if (gpuKnown) {
-      gpuEl.textContent = `${gpuMs.toFixed(1)}ms`;
+      const prefix = state.perf.gpuMsEstimated ? "~" : "";
+      gpuEl.textContent = `${prefix}${gpuMs.toFixed(1)}ms`;
     } else if (typeof state.perf.gpuLabel === "string" && state.perf.gpuLabel.trim()) {
       const label = state.perf.gpuLabel.trim();
       gpuEl.textContent = label.length > 14 ? `${label.slice(0, 13)}…` : label;

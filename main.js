@@ -261,7 +261,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   
   // Calculate delta time
-  let dt = (now - lastFrame) / 1000;
+  const frameIntervalMs = now - lastFrame;
+  let dt = frameIntervalMs / 1000;
   lastFrame = now;
   
   // Clamp dt to prevent huge jumps
@@ -324,7 +325,7 @@ function frame(now) {
   
   // Update performance HUD
   const frameEnd = performance.now();
-  updatePerformanceMetrics(frameStart, frameEnd, particleCount, now);
+  updatePerformanceMetrics(frameStart, frameEnd, particleCount, now, frameIntervalMs);
 }
 
 // ============================================================================
@@ -383,19 +384,25 @@ function buildBackgroundUniforms() {
 // Performance Metrics
 // ============================================================================
 
-function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now) {
+function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now, frameIntervalMs) {
   const cpuMs = frameEnd - frameStart;
+  const gpuEstMs = Math.max(0, (Number.isFinite(frameIntervalMs) ? frameIntervalMs : 0) - cpuMs);
   
   state.perf.accum += cpuMs;
+  state.perf.gpuAccum += gpuEstMs;
   state.perf.count++;
   
   if (now - state.perf.lastUpdate > PERF_UPDATE_MS) {
     const avgCpu = state.perf.accum / state.perf.count;
     const fps = 1000 / (now - state.perf.lastFrame) * state.perf.count;
-    
-    updatePerfHud(fps, particleCount, avgCpu, state.perf.gpuMs);
+    const avgGpuEst = state.perf.gpuAccum / state.perf.count;
+    const gpuForHud = renderer.timestampSupported ? state.perf.gpuMs : avgGpuEst;
+
+    state.perf.gpuMsEstimated = !renderer.timestampSupported;
+    updatePerfHud(fps, particleCount, avgCpu, gpuForHud);
     
     state.perf.accum = 0;
+    state.perf.gpuAccum = 0;
     state.perf.count = 0;
     state.perf.lastUpdate = now;
     state.perf.lastFrame = now;
@@ -409,6 +416,7 @@ function updatePerformanceMetrics(frameStart, frameEnd, particleCount, now) {
     renderer.readGpuTime().then(gpuMs => {
       if (gpuMs !== null) {
         state.perf.gpuMs = gpuMs;
+        state.perf.gpuMsEstimated = false;
       }
       state.perf.gpuInFlight = false;
     });
