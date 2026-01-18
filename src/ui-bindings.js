@@ -636,6 +636,10 @@ function setAngleWheelUI(wheelId, dotId, valueId, degrees) {
   if (valueEl) valueEl.textContent = `${Math.round(deg)}°`;
 
   const rect = wheel.getBoundingClientRect();
+  // If the wheel isn't laid out yet (e.g., inside a collapsed group), don't
+  // stomp the CSS default dot position (which is at 12 o'clock).
+  if (rect.width < 2 || rect.height < 2) return;
+
   const cx = rect.width / 2;
   const cy = rect.height / 2;
   const r = Math.max(0, Math.min(cx, cy) - 6);
@@ -651,6 +655,27 @@ function setupAngleWheel({ wheelId, dotId, valueId, resetBtnId, getDegrees, setD
   const applyFromState = () => {
     setAngleWheelUI(wheelId, dotId, valueId, getDegrees());
   };
+
+  // Ensure initial dot placement happens after layout and whenever the wheel
+  // becomes visible (e.g., expanding a collapsible group).
+  {
+    let tries = 0;
+    const tryApply = () => {
+      applyFromState();
+      tries += 1;
+      const rect = wheel.getBoundingClientRect();
+      if ((rect.width < 2 || rect.height < 2) && tries < 8) {
+        requestAnimationFrame(tryApply);
+      }
+    };
+    requestAnimationFrame(tryApply);
+
+    if (!wheel.dataset.angleWheelObserved && typeof ResizeObserver !== "undefined") {
+      wheel.dataset.angleWheelObserved = "1";
+      const ro = new ResizeObserver(() => applyFromState());
+      ro.observe(wheel);
+    }
+  }
 
   const setFromPointerEvent = (e) => {
     const rect = wheel.getBoundingClientRect();
