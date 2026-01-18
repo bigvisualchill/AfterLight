@@ -59,11 +59,7 @@ function getEmissionDirection() {
  * @param {number} dt - Delta time
  */
 export function spawnAt(mx, my, count = 1, lerpFactor = 0, dt = 0) {
-  const capacity = state.particle.capacity;
-  if (particles.length >= capacity) return;
-
   for (let i = 0; i < count; i++) {
-    if (particles.length >= capacity) break;
     const t = count > 1 ? (i + 0.5) / count : lerpFactor;
     // Interpolate emitter position for smooth trails
     const emitPos = [
@@ -333,21 +329,6 @@ export function emitParticles(dt) {
   const lambda = state.particle.emissionRate * dtEmit;
   let accum = spawnAccum + lambda;
   let spawnNow = Math.floor(accum);
-  spawnNow = Math.min(spawnNow, 2000);
-
-  // Never exceed capacity and never bank "missed" spawns while full.
-  const capacity = state.particle.capacity;
-  const available = Math.max(0, capacity - particles.length);
-  if (available <= 0) {
-    setSpawnAccum(0);
-    return;
-  }
-
-  if (spawnNow > available) {
-    spawnNow = available;
-    // Discard remainder to keep emission steady (no catch-up bursts).
-    accum = 0;
-  }
   
   if (spawnNow > 0) {
     accum -= spawnNow;

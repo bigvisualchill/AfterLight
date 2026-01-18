@@ -200,6 +200,20 @@ function handleCapacityChange(newCapacity) {
   }
 }
 
+function ensureCapacityForParticles() {
+  const required = particles.length;
+  if (!Number.isFinite(required) || required <= 0) return;
+
+  if (required > state.particle.capacity) {
+    const nextCapacity = Math.max(required, state.particle.capacity * 2);
+    state.particle.capacity = nextCapacity;
+    instanceData = new Float32Array(nextCapacity * 17);
+    renderer.ensureInstanceCapacity(nextCapacity);
+  } else {
+    renderer.ensureInstanceCapacity(state.particle.capacity);
+  }
+}
+
 // ============================================================================
 // Export Handlers
 // ============================================================================
@@ -289,6 +303,7 @@ function frame(now) {
   // Emit and update particles
   emitParticles(dt);
   updateParticles(dt, now);
+  ensureCapacityForParticles();
   
   // Get camera parameters
   const uniformData = updateCamera(now / 1000, canvas.width, canvas.height);

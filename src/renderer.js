@@ -220,6 +220,9 @@ export class Renderer {
     // Size tracking
     this.width = 0;
     this.height = 0;
+
+    // Instance capacity (for dynamic stress testing)
+    this.instanceCapacity = 0;
   }
 
   /**
@@ -285,6 +288,7 @@ export class Renderer {
 
     // Create instance buffer for particles
     const maxParticles = state.particle.capacity;
+    this.instanceCapacity = maxParticles;
     this.instanceBuffer = this.device.createBuffer({
       size: maxParticles * 17 * 4, // 17 floats per instance
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -760,6 +764,23 @@ export class Renderer {
         particleCount * 17 * 4
       );
     }
+  }
+
+  ensureInstanceCapacity(requiredParticles) {
+    if (!Number.isFinite(requiredParticles) || requiredParticles <= this.instanceCapacity) return;
+    if (!this.device) return;
+
+    const nextCapacity = Math.max(
+      requiredParticles,
+      this.instanceCapacity > 0 ? this.instanceCapacity * 2 : requiredParticles
+    );
+
+    this.instanceCapacity = nextCapacity;
+    if (this.instanceBuffer) this.instanceBuffer.destroy();
+    this.instanceBuffer = this.device.createBuffer({
+      size: nextCapacity * 17 * 4,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
   }
 
   /**
