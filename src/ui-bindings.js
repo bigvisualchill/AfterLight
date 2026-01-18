@@ -180,15 +180,57 @@ export function setupEventListeners(callbacks = {}) {
   // Sidebar panel switching
   const sidebarButtons = document.querySelectorAll(".sidebar-btn");
   const panelGroups = document.querySelectorAll(".panel");
-  sidebarButtons.forEach(btn => {
+
+  const setActivePanel = (panelKey) => {
+    if (!panelKey) return;
+    sidebarButtons.forEach((b) => b.classList.toggle("active", b.dataset.panel === panelKey));
+    panelGroups.forEach((p) => p.classList.toggle("active", p.dataset.panel === panelKey));
+  };
+
+  sidebarButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      const panelId = btn.dataset.panel;
-      sidebarButtons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      panelGroups.forEach(p => {
-        p.classList.toggle("active", p.id === panelId);
-      });
+      const panelKey = btn.dataset.panel;
+      if (panelKey) setActivePanel(panelKey);
     });
+  });
+
+  // Default to the first panel if none are active yet
+  if (!document.querySelector(".sidebar-btn.active")) {
+    const first = Array.from(sidebarButtons).find((b) => b.dataset.panel);
+    if (first) setActivePanel(first.dataset.panel);
+  } else {
+    const active = document.querySelector(".sidebar-btn.active");
+    setActivePanel(active?.dataset?.panel);
+  }
+
+  // Collapsible settings (the +/- buttons)
+  document.addEventListener("click", (e) => {
+    const toggle = e.target.closest(".collapse-indicator");
+    if (!toggle) return;
+
+    const setting = toggle.closest(".setting");
+    if (!setting) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const willExpand = !setting.classList.contains("expanded");
+
+    // Collapse siblings in the same group for predictable UI behavior
+    const parent = setting.parentElement;
+    if (parent) {
+      for (const child of Array.from(parent.children)) {
+        if (child !== setting && child.classList?.contains("setting")) {
+          child.classList.remove("expanded");
+          const span = child.querySelector(".collapse-indicator span");
+          if (span) span.textContent = "+";
+        }
+      }
+    }
+
+    setting.classList.toggle("expanded", willExpand);
+    const indicatorSpan = setting.querySelector(".collapse-indicator span");
+    if (indicatorSpan) indicatorSpan.textContent = willExpand ? "−" : "+";
   });
   
   // Particle settings
@@ -279,15 +321,36 @@ function setupCheckbox(name, setter) {
 // ============================================================================
 
 export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
-  const fpsEl = document.getElementById("fpsDisplay");
-  const countEl = document.getElementById("particleCount");
-  const cpuEl = document.getElementById("cpuTime");
-  const gpuEl = document.getElementById("gpuTime");
-  
-  if (fpsEl) fpsEl.textContent = fps.toFixed(0);
-  if (countEl) countEl.textContent = particleCount;
-  if (cpuEl) cpuEl.textContent = cpuMs.toFixed(1);
-  if (gpuEl) gpuEl.textContent = gpuMs !== null ? gpuMs.toFixed(1) : "--";
+  const fpsEl = document.getElementById("perfFps");
+  const particleEl = document.getElementById("perfParticles");
+  const cpuEl = document.getElementById("perfCpu");
+  const gpuEl = document.getElementById("perfGpu");
+  const cpuBar = document.getElementById("perfCpuBar");
+  const gpuBar = document.getElementById("perfGpuBar");
+
+  if (fpsEl) fpsEl.textContent = Number.isFinite(fps) ? fps.toFixed(0) : "--";
+  if (particleEl) particleEl.textContent = String(particleCount ?? 0);
+
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  const barColor = (t) => (t < 0.55 ? "#22c55e" : t < 0.85 ? "#f59e0b" : "#ef4444");
+
+  // Normalize against 60 FPS frame budget
+  const budgetMs = 1000 / 60;
+  const cpuT = clamp01(cpuMs / budgetMs);
+
+  if (cpuEl) cpuEl.textContent = Number.isFinite(cpuMs) ? `${cpuMs.toFixed(1)}ms` : "--";
+  if (cpuBar) {
+    cpuBar.style.width = `${Math.max(2, cpuT * 100)}%`;
+    cpuBar.style.backgroundColor = barColor(cpuT);
+  }
+
+  const gpuKnown = gpuMs !== null && gpuMs !== undefined && Number.isFinite(gpuMs) && gpuMs > 0;
+  const gpuT = clamp01((gpuKnown ? gpuMs : 0) / budgetMs);
+  if (gpuEl) gpuEl.textContent = gpuKnown ? `${gpuMs.toFixed(1)}ms` : "--";
+  if (gpuBar) {
+    gpuBar.style.width = `${Math.max(2, (gpuKnown ? gpuT : 0) * 100)}%`;
+    gpuBar.style.backgroundColor = gpuKnown ? barColor(gpuT) : "rgba(255,255,255,0.25)";
+  }
 }
 
 // ============================================================================
