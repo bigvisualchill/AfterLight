@@ -8,62 +8,72 @@ import { hexToRgb, rgbToHex, clamp, roundToStep, formatWithStep, evalCurve, eval
 // ============================================================================
 
 export function initElements() {
-  // Enhance settings UI (collapsible line-items)
-  // Called before `setupEventListeners()` from `main.js`.
-  const root = document.querySelector(".settings-panel-container");
-  if (!root) return;
+  // Particle panel: group-level collapsibles only.
+  // This matches the old UX where the Particles sidebar shows a few top-level rows.
+  const particlePanel = document.querySelector('.panel[data-panel="particles"]');
+  if (!particlePanel) return;
 
-  // Make each range line-item a collapsible `.setting` so the UI can be collapsed per row.
-  const rangeLabels = Array.from(root.querySelectorAll('label[for]'));
-  for (const label of rangeLabels) {
-    if (!(label instanceof HTMLLabelElement)) continue;
-    if (label.closest(".setting")) continue;
-    if (label.querySelector(".collapse-indicator")) continue;
+  const container = particlePanel.querySelector(".panel-content");
+  if (!container) return;
 
-    const targetId = label.getAttribute("for");
-    if (!targetId) continue;
-    const input = document.getElementById(targetId);
-    if (!(input instanceof HTMLInputElement)) continue;
-    if (input.type !== "range") continue;
-
-    // Avoid converting labels that are part of a compound control (e.g. the focus navigator inline toggle)
-    if (label.closest(".inline-toggle")) continue;
-
-    const insertParent = label.parentElement;
-    if (!insertParent) continue;
-
-    // If the slider is wrapped (e.g. `.slider-with-reset`), move that wrapper as a whole.
-    const sliderWrapper = input.closest(".slider-with-reset");
-    const sliderNode = sliderWrapper && sliderWrapper.parentElement === insertParent ? sliderWrapper : input;
-
+  const makeGroup = (id, titleText, nodes) => {
     const setting = document.createElement("div");
-    setting.className = "control setting expanded";
-    setting.id = `${targetId}Setting`;
+    setting.className = "control setting";
+    setting.id = id;
 
-    const body = document.createElement("div");
-    body.className = "control-body range-body";
-
-    // Build the collapse indicator inside the label.
+    const label = document.createElement("label");
     const left = document.createElement("span");
     left.className = "label-left";
+
     const collapseBtn = document.createElement("button");
     collapseBtn.type = "button";
     collapseBtn.className = "collapse-indicator";
     const collapseIcon = document.createElement("span");
-    collapseIcon.textContent = "−";
+    collapseIcon.textContent = "+";
     collapseBtn.appendChild(collapseIcon);
-    left.appendChild(collapseBtn);
 
-    while (label.firstChild) left.appendChild(label.firstChild);
+    left.appendChild(collapseBtn);
+    left.appendChild(document.createTextNode(titleText));
     label.appendChild(left);
 
-    // Replace label in DOM with the new setting wrapper.
-    insertParent.insertBefore(setting, label);
+    const body = document.createElement("div");
+    body.className = "control-body";
+
+    for (const n of nodes) body.appendChild(n);
+
     setting.appendChild(label);
     setting.appendChild(body);
+    return setting;
+  };
 
-    // Move slider element(s) under the body.
-    body.appendChild(sliderNode);
+  const takeControlBySelector = (selector) => {
+    const el = container.querySelector(selector);
+    if (!el) return null;
+    return el.closest(".control");
+  };
+
+  // Grab existing controls (we'll re-wrap them).
+  const shapeControl = takeControlBySelector("#particleShape");
+  const lifeControl = takeControlBySelector("#lifeSeconds");
+  const sizeControl = takeControlBySelector("#particleSize");
+  const colorControl = takeControlBySelector("#colorMode");
+  const opacityControl = takeControlBySelector("#particleOpacity");
+
+  const groups = [];
+  if (shapeControl) groups.push(makeGroup("particleShapeGroup", "Particle Shape", [shapeControl]));
+  if (lifeControl) groups.push(makeGroup("particleLifeGroup", "Particle Life", [lifeControl]));
+  if (sizeControl) groups.push(makeGroup("particleSizeGroup", "Particle Size", [sizeControl]));
+  if (colorControl) groups.push(makeGroup("particleColorGroup", "Particle Color", [colorControl]));
+  if (opacityControl) groups.push(makeGroup("particleOpacityGroup", "Particle Opacity", [opacityControl]));
+
+  // Remove grabbed controls from the container before inserting groups.
+  for (const ctrl of [shapeControl, lifeControl, sizeControl, colorControl, opacityControl]) {
+    if (ctrl && ctrl.parentElement === container) ctrl.remove();
+  }
+
+  // Insert groups at the top of the Particles panel in the desired order.
+  for (let i = groups.length - 1; i >= 0; i--) {
+    container.insertBefore(groups[i], container.firstChild);
   }
 }
 
