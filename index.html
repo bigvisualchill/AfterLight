@@ -720,12 +720,21 @@
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.08);
         color: #d6e0ea;
-        cursor: ew-resize;
+        cursor: text;
         min-width: 36px;
+      }
+      input.editable-value {
+        display: inline-block;
+        width: 64px;
+        text-align: right;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        font: inherit;
+        font-size: 10.5px;
+        line-height: 1.2;
+        outline: none;
       }
       .editable-value.editing {
         background: rgba(255, 255, 255, 0.16);
-        cursor: text;
         outline: none;
       }
       .control input[type="range"] {

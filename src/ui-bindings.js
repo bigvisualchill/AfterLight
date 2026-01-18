@@ -75,6 +75,68 @@ export function initElements() {
   for (let i = groups.length - 1; i >= 0; i--) {
     container.insertBefore(groups[i], container.firstChild);
   }
+
+  // Convert `...Val` spans (for range inputs) into editable numeric fields.
+  const settingsRoot = document.querySelector(".settings-panel-container");
+  if (!settingsRoot) return;
+
+  const spans = Array.from(settingsRoot.querySelectorAll('span[id$="Val"]'));
+  for (const span of spans) {
+    const spanId = span.getAttribute("id") || "";
+    const baseId = spanId.endsWith("Val") ? spanId.slice(0, -3) : null;
+    if (!baseId) continue;
+
+    const input = document.getElementById(baseId);
+    if (!(input instanceof HTMLInputElement)) continue;
+    if (input.type !== "range") continue;
+
+    // Skip if already converted.
+    if (span instanceof HTMLInputElement) continue;
+
+    const step = parseFloat(input.step || "1");
+    const min = parseFloat(input.min || "0");
+    const max = parseFloat(input.max || "1");
+
+    const field = document.createElement("input");
+    field.type = "text";
+    field.inputMode = "decimal";
+    field.className = "editable-value";
+    field.autocomplete = "off";
+    field.spellcheck = false;
+    field.value = formatWithStep(parseFloat(input.value), step);
+    field.dataset.for = baseId;
+
+    span.replaceWith(field);
+
+    const commit = () => {
+      const raw = field.value.trim();
+      let v = parseFloat(raw);
+      if (!Number.isFinite(v)) {
+        field.value = formatWithStep(parseFloat(input.value), step);
+        return;
+      }
+      v = clamp(v, min, max);
+      v = roundToStep(v, step, min);
+      input.value = String(v);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    field.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit();
+        field.blur();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        field.value = formatWithStep(parseFloat(input.value), step);
+        field.blur();
+      }
+    });
+    field.addEventListener("blur", commit);
+    field.addEventListener("focus", () => {
+      field.select();
+    });
+  }
 }
 
 // ============================================================================
@@ -86,7 +148,12 @@ export function syncUIFromState() {
     const slider = document.getElementById(id);
     const display = document.getElementById(id + "Val");
     if (slider) slider.value = value;
-    if (display) display.textContent = decimals > 0 ? Number(value).toFixed(decimals) : String(value);
+    if (display) {
+      const step = slider instanceof HTMLInputElement ? parseFloat(slider.step || "1") : 1;
+      const formatted = decimals > 0 ? Number(value).toFixed(decimals) : formatWithStep(Number(value), step);
+      if (display instanceof HTMLInputElement) display.value = formatted;
+      else display.textContent = formatted;
+    }
   };
 
   const setSelect = (id, value) => {
@@ -807,7 +874,10 @@ function setupSlider(name, setter, decimals = 0) {
     const value = parseFloat(e.target.value);
     setter(value);
     if (valueDisplay) {
-      valueDisplay.textContent = decimals > 0 ? value.toFixed(decimals) : value;
+      const step = parseFloat(slider.step || "1");
+      const formatted = decimals > 0 ? value.toFixed(decimals) : formatWithStep(value, step);
+      if (valueDisplay instanceof HTMLInputElement) valueDisplay.value = formatted;
+      else valueDisplay.textContent = formatted;
     }
   });
 }
