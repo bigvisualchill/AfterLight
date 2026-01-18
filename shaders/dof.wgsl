@@ -9,14 +9,25 @@
 // - ACES tonemapping
 // ============================================================================
 
-// Shared vertex input/output for fullscreen quad passes
-struct VertexInput {
-  @location(0) position: vec2<f32>,
-}
-
+// Shared vertex output for fullscreen triangle passes
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) uv: vec2<f32>,
+}
+
+// Generate fullscreen triangle from vertex index (no vertex buffer needed)
+fn fullscreenTrianglePosition(vertexIndex: u32) -> vec4<f32> {
+  // Generate a triangle that covers the entire screen
+  // Vertices at: (-1,-1), (3,-1), (-1,3) - covers [-1,1] range
+  let x = f32(i32(vertexIndex) / 2) * 4.0 - 1.0;
+  let y = f32(i32(vertexIndex) % 2) * 4.0 - 1.0;
+  return vec4<f32>(x, y, 0.0, 1.0);
+}
+
+fn fullscreenTriangleUV(vertexIndex: u32) -> vec2<f32> {
+  let x = f32(i32(vertexIndex) / 2) * 2.0;
+  let y = 1.0 - f32(i32(vertexIndex) % 2) * 2.0;
+  return vec2<f32>(x, y);
 }
 
 // ============================================================================
@@ -85,11 +96,10 @@ fn computeCoC(linearDepth: f32) -> f32 {
 }
 
 @vertex
-fn vs_coc(input: VertexInput) -> VertexOutput {
+fn vs_coc(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
   var output: VertexOutput;
-  output.position = vec4<f32>(input.position, 0.0, 1.0);
-  output.uv = input.position * 0.5 + 0.5;
-  output.uv.y = 1.0 - output.uv.y;
+  output.position = fullscreenTrianglePosition(vertexIndex);
+  output.uv = fullscreenTriangleUV(vertexIndex);
   return output;
 }
 
@@ -160,11 +170,10 @@ fn linearizeDepthBlur(depth: f32) -> f32 {
 }
 
 @vertex
-fn vs_blur(input: VertexInput) -> VertexOutput {
+fn vs_blur(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
   var output: VertexOutput;
-  output.position = vec4<f32>(input.position, 0.0, 1.0);
-  output.uv = input.position * 0.5 + 0.5;
-  output.uv.y = 1.0 - output.uv.y;
+  output.position = fullscreenTrianglePosition(vertexIndex);
+  output.uv = fullscreenTriangleUV(vertexIndex);
   return output;
 }
 
@@ -188,7 +197,7 @@ fn fs_blur_far(input: VertexOutput) -> @location(0) vec4<f32> {
   
   // Early out for very small blur
   if (blurRadius < 0.5) {
-    let color = textureSample(colorTexture, linearSampler, uv);
+    let color = textureSampleLevel(colorTexture, linearSampler, uv, 0.0);
     return vec4<f32>(color.rgb, 1.0);
   }
   
@@ -197,7 +206,7 @@ fn fs_blur_far(input: VertexOutput) -> @location(0) vec4<f32> {
   let blades = blurUniforms.bladeCount;
   
   // Add center sample
-  let centerColor = textureSample(colorTexture, linearSampler, uv).rgb;
+  let centerColor = textureSampleLevel(colorTexture, linearSampler, uv, 0.0).rgb;
   colorSum += centerColor;
   weightSum += 1.0;
   
@@ -219,7 +228,7 @@ fn fs_blur_far(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(-0.5, 1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1); // Always contribute a bit
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
@@ -241,7 +250,7 @@ fn fs_blur_far(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(-0.5, 1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1);
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
@@ -263,7 +272,7 @@ fn fs_blur_far(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(-0.5, 1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1);
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
@@ -293,7 +302,7 @@ fn fs_blur_near(input: VertexOutput) -> @location(0) vec4<f32> {
   
   // Early out for very small blur
   if (blurRadius < 0.5) {
-    let color = textureSample(colorTexture, linearSampler, uv);
+    let color = textureSampleLevel(colorTexture, linearSampler, uv, 0.0);
     return vec4<f32>(color.rgb, abs(centerCoc) / blurUniforms.maxBlurPx);
   }
   
@@ -302,7 +311,7 @@ fn fs_blur_near(input: VertexOutput) -> @location(0) vec4<f32> {
   let blades = blurUniforms.bladeCount;
   
   // Add center sample
-  let centerColor = textureSample(colorTexture, linearSampler, uv).rgb;
+  let centerColor = textureSampleLevel(colorTexture, linearSampler, uv, 0.0).rgb;
   colorSum += centerColor;
   weightSum += 1.0;
 
@@ -324,7 +333,7 @@ fn fs_blur_near(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(0.5, -1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1);
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
@@ -346,7 +355,7 @@ fn fs_blur_near(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(0.5, -1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1);
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
@@ -368,14 +377,14 @@ fn fs_blur_near(input: VertexOutput) -> @location(0) vec4<f32> {
       let cocWeight = smoothstep(0.5, -1.0, sampleCoc);
       let weight = max(occlusionWeight * cocWeight, 0.1);
       
-      let sampleColor = textureSample(colorTexture, linearSampler, sampleUV).rgb;
+      let sampleColor = textureSampleLevel(colorTexture, linearSampler, sampleUV, 0.0).rgb;
       colorSum += sampleColor * weight;
       weightSum += weight;
     }
   }
   
   if (weightSum < 0.001) {
-    let color = textureSample(colorTexture, linearSampler, uv);
+    let color = textureSampleLevel(colorTexture, linearSampler, uv, 0.0);
     return vec4<f32>(color.rgb, abs(centerCoc) / blurUniforms.maxBlurPx);
   }
   
@@ -428,11 +437,10 @@ fn linearToSrgb(linear: vec3<f32>) -> vec3<f32> {
 }
 
 @vertex
-fn vs_composite(input: VertexInput) -> VertexOutput {
+fn vs_composite(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
   var output: VertexOutput;
-  output.position = vec4<f32>(input.position, 0.0, 1.0);
-  output.uv = input.position * 0.5 + 0.5;
-  output.uv.y = 1.0 - output.uv.y;
+  output.position = fullscreenTrianglePosition(vertexIndex);
+  output.uv = fullscreenTriangleUV(vertexIndex);
   return output;
 }
 

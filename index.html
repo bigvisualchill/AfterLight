@@ -2785,55 +2785,18 @@
             <div id="recordingStatus" class="export-status"></div>
           </div>
           <div class="control">
-            <label>GIF Export</label>
-            <label for="gifDuration">Duration (seconds) <span id="gifDurationVal">3</span></label>
-            <input id="gifDuration" type="range" min="1" max="10" step="0.5" value="3" />
-            <label for="gifFps">Frame Rate <span id="gifFpsVal">30</span></label>
-            <input id="gifFps" type="range" min="10" max="60" step="5" value="30" />
-            <button id="exportGifBtn" class="export-btn" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M9 9h.01M15 9h.01M9 15h6"/>
-              </svg>
-              <span>Export GIF</span>
-            </button>
-            <div id="gifStatus" class="export-status"></div>
-            <div id="gifProgress" class="export-progress" style="display: none;">
-              <div id="gifProgressBar" class="export-progress-bar"></div>
-            </div>
-          </div>
-          <div class="control">
-            <label>Presets</label>
+            <label>HTML Export</label>
             <div class="export-btn-row">
-              <button id="savePresetBtn" class="export-btn" type="button">
+              <button id="exportHtmlBtn" class="export-btn" type="button">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-                  <polyline points="17 21 17 13 7 13 7 21"/>
-                  <polyline points="7 3 7 8 15 8"/>
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
-                <span>Save</span>
-              </button>
-              <button id="loadPresetBtn" class="export-btn" type="button">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-                </svg>
-                <span>Load</span>
+                <span>HTML</span>
               </button>
             </div>
-            <input type="file" id="presetFileInput" accept=".json" style="display: none;" />
-          </div>
-          <div class="control">
-            <label>Standalone Export</label>
-            <button id="exportStandaloneBtn" class="export-btn" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <line x1="9" y1="15" x2="15" y2="15"/>
-              </svg>
-              <span>Export HTML</span>
-            </button>
-            <div class="export-status">Self-contained player file</div>
           </div>
         </div>
       </div>

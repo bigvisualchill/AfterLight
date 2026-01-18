@@ -54,6 +54,7 @@
     (async function() {
       const canvas = document.getElementById('canvas');
       const errorEl = document.getElementById('error');
+      const debug = new URLSearchParams(location.search).has('debug');
       
       function showError(msg) {
         errorEl.style.display = 'block';
@@ -215,8 +216,9 @@
 
       // Instance buffer (will grow as needed)
       let maxParticles = 10000;
+      const instanceStrideBytes = 44; // 11 floats: pos(3) + color(4) + data(4)
       let instanceBuffer = device.createBuffer({
-        size: maxParticles * 40, // 10 floats per particle
+        size: maxParticles * instanceStrideBytes,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
       });
 
@@ -233,7 +235,7 @@
               attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
             },
             {
-              arrayStride: 40,
+              arrayStride: instanceStrideBytes,
               stepMode: 'instance',
               attributes: [
                 { shaderLocation: 1, offset: 0, format: 'float32x3' },  // position
@@ -265,6 +267,9 @@
       // Particles array
       let particles = [];
       let spawnAccum = 0;
+      if (debug) {
+        console.log("[standalone] settings =", settings);
+      }
 
       // Helper functions
       function rand(min, max) {
@@ -287,12 +292,15 @@
 
       function sampleGradient(points, t) {
         if (!points || points.length === 0) return [1, 1, 1];
-        if (t <= points[0].pos) return points[0].color;
-        if (t >= points[points.length - 1].pos) return points[points.length - 1].color;
+        const getPos = (p) => (p && typeof p === 'object' ? (p.pos ?? p.x ?? 0) : 0);
+        if (t <= getPos(points[0])) return points[0].color;
+        if (t >= getPos(points[points.length - 1])) return points[points.length - 1].color;
         
         for (let i = 0; i < points.length - 1; i++) {
-          if (t >= points[i].pos && t <= points[i + 1].pos) {
-            const localT = (t - points[i].pos) / (points[i + 1].pos - points[i].pos);
+          const a = getPos(points[i]);
+          const b = getPos(points[i + 1]);
+          if (t >= a && t <= b) {
+            const localT = (t - a) / (b - a);
             return [
               points[i].color[0] + (points[i + 1].color[0] - points[i].color[0]) * localT,
               points[i].color[1] + (points[i + 1].color[1] - points[i].color[1]) * localT,
@@ -390,7 +398,7 @@
         }
 
         // Build instance data
-        const instanceData = new Float32Array(particles.length * 10);
+        const instanceData = new Float32Array(particles.length * 11);
         for (let i = 0; i < particles.length; i++) {
           const p = particles[i];
           const t = p.age / p.life;
@@ -409,7 +417,7 @@
           const sizeT = settings.sizeCurvePoints ? evalCurve(settings.sizeCurvePoints, t) : 1;
           const opacity = settings.opacityCurvePoints ? evalCurve(settings.opacityCurvePoints, t) : 1;
           
-          const idx = i * 10;
+          const idx = i * 11;
           instanceData[idx + 0] = p.pos[0];
           instanceData[idx + 1] = p.pos[1];
           instanceData[idx + 2] = p.pos[2];
@@ -420,13 +428,14 @@
           instanceData[idx + 7] = p.age;
           instanceData[idx + 8] = p.life;
           instanceData[idx + 9] = p.size * sizeT;
+          instanceData[idx + 10] = 0;
         }
 
         // Resize buffer if needed
         if (particles.length > maxParticles) {
           maxParticles = particles.length * 2;
           instanceBuffer = device.createBuffer({
-            size: maxParticles * 40,
+            size: maxParticles * instanceStrideBytes,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
           });
         }
@@ -514,6 +523,22 @@
       }
 
       requestAnimationFrame(frame);
+
+      // If the export results in "nothing on screen" (e.g. emissionRate = 0),
+      // show a friendly hint instead of a silent black frame.
+      setTimeout(() => {
+        if (particles.length > 0) return;
+        const rate = settings.emissionRate ?? 0;
+        const opacity = settings.particleOpacity ?? 1;
+        const size = settings.particleSize ?? 1;
+        showError(
+          "Nothing is being rendered yet.\n\n" +
+            `emissionRate: ${rate}\n` +
+            `particleSize: ${size}\n` +
+            `particleOpacity: ${opacity}\n\n` +
+            "If emissionRate is 0, increase it before exporting."
+        );
+      }, 1500);
     })();
   </script>
 </body>
