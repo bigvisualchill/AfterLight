@@ -1514,6 +1514,9 @@ export function setupGradientEditor(canvasId, points, onChange) {
   function draw() {
     const w = canvas.width;
     const h = canvas.height;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? rect.width / w : 1;
+    const scaleY = rect.height > 0 ? rect.height / h : 1;
     
     // Draw gradient
     const gradient = ctx.createLinearGradient(0, 0, w, 0);
@@ -1533,10 +1536,16 @@ export function setupGradientEditor(canvasId, points, onChange) {
       
       const cy = h - MARKER_HEIGHT / 2;
       ctx.beginPath();
-      ctx.arc(px, cy, POINT_R, 0, Math.PI * 2);
+      if (Math.abs(scaleX - scaleY) < 0.01) {
+        ctx.arc(px, cy, POINT_R, 0, Math.PI * 2);
+      } else {
+        // Compensate for non-uniform CSS scaling so points look circular on screen.
+        const ry = POINT_R * (scaleX / (scaleY || 1));
+        ctx.ellipse(px, cy, POINT_R, ry, 0, 0, Math.PI * 2);
+      }
       ctx.fillStyle = rgbToHex(p.color);
       ctx.fill();
-      ctx.strokeStyle = i === selectedPoint ? "#ffff00" : "#fff";
+      ctx.strokeStyle = i === selectedPoint ? "#7dd3fc" : "#fff";
       ctx.lineWidth = i === selectedPoint ? 2 : 1;
       ctx.stroke();
     }
