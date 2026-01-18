@@ -168,6 +168,62 @@ export function initElements() {
     }
   }
 
+  // Forces panel: collapsible groups for Gravity / Wind / Drag.
+  const forcesPanel = document.querySelector('.panel[data-panel="forces"]');
+  if (forcesPanel) {
+    const forcesContainer = forcesPanel.querySelector("#forcesControls");
+    if (forcesContainer) {
+      const makeGroup = (id, titleText, nodes) => {
+        const setting = document.createElement("div");
+        setting.className = "control setting";
+        setting.id = id;
+
+        const label = document.createElement("label");
+        const left = document.createElement("span");
+        left.className = "label-left";
+
+        const collapseBtn = document.createElement("button");
+        collapseBtn.type = "button";
+        collapseBtn.className = "collapse-indicator";
+        const collapseIcon = document.createElement("span");
+        collapseIcon.textContent = "+";
+        collapseBtn.appendChild(collapseIcon);
+
+        left.appendChild(collapseBtn);
+        left.appendChild(document.createTextNode(titleText));
+        label.appendChild(left);
+
+        const body = document.createElement("div");
+        body.className = "control-body";
+        for (const n of nodes) body.appendChild(n);
+
+        setting.appendChild(label);
+        setting.appendChild(body);
+        return setting;
+      };
+
+      const takeControlBySelector = (selector) => {
+        const el = forcesContainer.querySelector(selector);
+        if (!el) return null;
+        return el.closest(".control");
+      };
+
+      const wrapControlAsGroup = (groupId, titleText, controlEl) => {
+        if (!controlEl) return;
+        const placeholder = document.createComment("setting-placeholder");
+        const parent = controlEl.parentElement;
+        if (!parent) return;
+        parent.insertBefore(placeholder, controlEl);
+        const group = makeGroup(groupId, titleText, [controlEl]);
+        placeholder.replaceWith(group);
+      };
+
+      wrapControlAsGroup("gravityGroup", "Gravity", takeControlBySelector("#gravity"));
+      wrapControlAsGroup("windGroup", "Wind", takeControlBySelector("#windX"));
+      wrapControlAsGroup("dragGroup", "Drag", takeControlBySelector("#drag"));
+    }
+  }
+
   // Convert `...Val` spans (for range inputs) into editable numeric fields.
   const settingsRoot = document.querySelector(".settings-panel-container");
   if (!settingsRoot) return;
@@ -428,6 +484,7 @@ export function syncUIFromState() {
   updateForceModeVisibility();
   updateVortexVisibility();
   updateAttractorVisibility();
+  updateGroundVisibility();
   updateShadingVisibility();
   updateWireframeVisibility();
   updateBackgroundVisibility();
@@ -567,6 +624,10 @@ function updateVortexVisibility() {
 
 function updateAttractorVisibility() {
   setDisplay("attractorControls", state.attractor.enabled);
+}
+
+function updateGroundVisibility() {
+  setDisplay("groundControls", state.forces.groundEnabled);
 }
 
 function updateShadingVisibility() {
@@ -773,7 +834,7 @@ export function setupEventListeners(callbacks = {}) {
   setupSlider("windY", (v) => { state.forces.wind[1] = v; }, 2);
   setupSlider("windZ", (v) => { state.forces.wind[2] = v; }, 2);
   setupSlider("drag", (v) => { state.forces.drag = v; }, 2);
-  setupPill("groundEnabled", () => state.forces.groundEnabled, (v) => { state.forces.groundEnabled = v; });
+  setupPill("groundEnabled", () => state.forces.groundEnabled, (v) => { state.forces.groundEnabled = v; }, () => updateGroundVisibility());
   setupSlider("groundLevel", (v) => { state.forces.groundLevel = v; }, 2);
   setupSlider("bounce", (v) => { state.forces.bounce = v; }, 2);
   
