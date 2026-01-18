@@ -1,6 +1,6 @@
 // UI Bindings: DOM elements, event listeners, input synchronization
 
-import { state, applySnapshot, serializeState } from './state.js';
+import { state } from './state.js';
 import { hexToRgb, rgbToHex, clamp, roundToStep, formatWithStep, evalCurve, evalGradient } from './math.js';
 
 // ============================================================================
@@ -17,74 +17,189 @@ export function initElements() {
 // ============================================================================
 
 export function syncUIFromState() {
-  // Helper to safely set slider value and display
   const setSlider = (id, value, decimals = 0) => {
     const slider = document.getElementById(id);
     const display = document.getElementById(id + "Val");
     if (slider) slider.value = value;
-    if (display) display.textContent = decimals > 0 ? value.toFixed(decimals) : value;
+    if (display) display.textContent = decimals > 0 ? Number(value).toFixed(decimals) : String(value);
   };
-  
-  const setCheckbox = (id, checked) => {
-    const el = document.getElementById(id);
-    if (el) el.checked = checked;
-  };
-  
+
   const setSelect = (id, value) => {
     const el = document.getElementById(id);
     if (el) el.value = value;
   };
-  
+
   const setColor = (id, rgb) => {
     const el = document.getElementById(id);
-    if (el) el.value = rgbToHex(rgb);
+    const hex = rgbToHex(rgb);
+    if (el) el.value = hex;
+    const display = document.getElementById(id + "Val");
+    if (display) display.textContent = hex;
   };
 
-  // Particle settings
-  setSlider("emissionRate", state.particle.emissionRate);
-  setSlider("particleSize", state.particle.size);
-  setSlider("particleOpacity", state.particle.opacity, 2);
+  const setPill = (id, on) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.dataset.state = on ? "on" : "off";
+    el.textContent = on ? "On" : "Off";
+  };
+
+  // Particles
   setSelect("particleShape", state.particle.shape);
-  setSelect("blendMode", state.particle.blendMode);
-  setSelect("particleColorMode", state.particle.colorMode);
+  setSlider("softness", state.particle.softness, 2);
+  setSlider("sphereDetail", state.particle.sphereSubdivisions);
+  setSlider("lifeSeconds", state.particle.lifeSeconds, 1);
+  setSlider("lifeRandom", state.particle.lifeRandom, 2);
+  setSlider("particleSize", state.particle.size);
+  setSlider("sizeRandom", state.particle.sizeRandom, 2);
+  setSelect("colorMode", state.particle.colorMode);
   setColor("solidColor", state.particle.solidColor);
-  
-  // Emitter settings  
+  setSelect("blendMode", state.particle.blendMode === "normal" ? "alpha" : state.particle.blendMode);
+  setSlider("particleOpacity", state.particle.opacity, 2);
+
+  // Emitter
   setSelect("emitterShape", state.emitter.shape);
-  setSelect("emitFrom", state.emitter.emitFrom);
-  setSelect("emissionDirection", state.emitter.direction);
-  
-  // DOF settings
-  setCheckbox("dofEnabled", state.dof.enabled);
-  
+  setSlider("emitterSize", state.emitter.size, 2);
+  setSelect("emitFrom", state.emitter.emitFrom === "surface" ? "edge" : "volume");
+  setSelect(
+    "emissionDirection",
+    state.emitter.direction === "outward" ? "outwards" : state.emitter.direction === "spherical" ? "bidirectional" : "directional"
+  );
+  setSlider("emissionRate", state.particle.emissionRate);
+  setSlider("emitterPosX", state.emitter.pos[0], 2);
+  setSlider("emitterPosY", state.emitter.pos[1], 2);
+  setSlider("emitterPosZ", state.emitter.pos[2], 2);
+  setPill("emitterGizmo", state.gizmos.emitterEnabled);
+  setSlider("coneAngle", state.emitter.coneAngle);
+  setSlider("initialSpeed", state.particle.initialSpeed, 2);
+  setSlider("speedRandom", state.emitter.speedRandom, 2);
+  setSlider("spinRate2d", state.particle.spinRateX, 1);
+  setSlider("spinRateX", state.particle.spinRateX, 1);
+  setSlider("spinRateY", state.particle.spinRateY, 1);
+  setSlider("spinRateZ", state.particle.spinRateZ, 1);
+  setSlider("spinRandom", state.particle.spinRandom, 1);
+
   // Forces
-  setCheckbox("forcesEnabled", state.forces.enabled);
+  setPill("forcesEnabled", state.forces.enabled);
   setSelect("forceMode", state.forces.mode);
-  
-  // Vortex
-  setCheckbox("vortexEnabled", state.vortex.enabled);
-  
-  // Attractor
-  setCheckbox("attractorEnabled", state.attractor.enabled);
-  
+  setSlider("turbulence", state.forces.turbulenceStrength, 1);
+  setSlider("turbulenceScale", state.forces.turbulenceScale, 1);
+  setSlider("curlStrength", state.forces.curlStrength, 1);
+  setSlider("curlScale", state.forces.curlScale, 1);
+  setSlider("gravity", state.forces.gravity, 2);
+  setSlider("windX", state.forces.wind[0], 2);
+  setSlider("windY", state.forces.wind[1], 2);
+  setSlider("windZ", state.forces.wind[2], 2);
+  setSlider("drag", state.forces.drag, 2);
+  setPill("groundEnabled", state.forces.groundEnabled);
+  setSlider("groundLevel", state.forces.groundLevel, 2);
+  setSlider("bounce", state.forces.bounce, 2);
+
+  setPill("vortexEnabled", state.vortex.enabled);
+  setSlider("vortexStrength", state.vortex.strength, 1);
+  setSlider("vortexRadius", state.vortex.radius, 1);
+  setSlider("vortexPosX", state.vortex.pos[0], 2);
+  setSlider("vortexPosY", state.vortex.pos[1], 2);
+  setSlider("vortexPosZ", state.vortex.pos[2], 2);
+  setPill("vortexGizmo", state.gizmos.vortexEnabled);
+
+  setPill("attractorEnabled", state.attractor.enabled);
+  setSlider("attractorStrength", state.attractor.strength, 1);
+  setSlider("attractorRadius", state.attractor.radius, 1);
+  setSlider("attractorPosX", state.attractor.pos[0], 2);
+  setSlider("attractorPosY", state.attractor.pos[1], 2);
+  setSlider("attractorPosZ", state.attractor.pos[2], 2);
+  setPill("attractorGizmo", state.gizmos.attractorEnabled);
+
   // Shading
-  setCheckbox("shadingEnabled", state.shading.enabled);
-  setColor("lightColor", state.shading.lightColor);
-  
+  setPill("shadingEnabled", state.shading.enabled);
+  setPill("surfaceEnabled", state.shading.surfaceEnabled);
+  setPill("wireframeEnabled", state.shading.wireframeEnabled);
+  setPill("wireframeSameColor", state.shading.wireframeSameColor);
+  setColor("wireframeColor", state.shading.wireframeColor);
+  setSlider("lightPosX", state.shading.lightPos[0], 2);
+  setSlider("lightPosY", state.shading.lightPos[1], 2);
+  setSlider("lightPosZ", state.shading.lightPos[2], 2);
+  setPill("lightGizmo", state.gizmos.lightEnabled);
+  setColor("baseColor", state.shading.lightColor);
+  setSlider("lightIntensity", state.shading.lightIntensity, 1);
+  setSelect("shadingStyle", state.shading.style);
+  setSlider("rimIntensity", state.shading.rimIntensity, 2);
+  setSlider("specIntensity", state.shading.specIntensity, 2);
+
+  // Camera + DOF
+  setPill("cameraViewEnabled", state.camera.viewEnabled);
+  setSlider("cameraPosX", state.camera.eye[0], 2);
+  setSlider("cameraPosY", state.camera.eye[1], 2);
+  setSlider("cameraPosZ", state.camera.eye[2], 2);
+  setPill("cameraGizmo", state.gizmos.cameraEnabled);
+  setSlider("focusDepth", state.dof.depthSlider, 2);
+  setSlider("aperture", state.dof.apertureSlider, 2);
+  setPill("focusNavigator", state.gizmos.focusNavigatorEnabled);
+
   // Background
   setSelect("bgMode", state.background.mode);
   setColor("bgSolidColor", state.background.solidColor);
-  
-  // Update visibility
+  setSelect("bgLinearDirection", state.background.linearDirection);
+  setSlider("bgRadialCenterX", state.background.radialCenter[0], 2);
+  setSlider("bgRadialCenterY", state.background.radialCenter[1], 2);
+
+  // Rotation wheels
+  setAngleWheelUI("directionXWheel", "directionXDot", "directionXVal", state.emitter.directionRotX);
+  setAngleWheelUI("directionYWheel", "directionYDot", "directionYVal", state.emitter.directionRotY);
+  setAngleWheelUI("directionZWheel", "directionZDot", "directionZVal", state.emitter.directionRotZ);
+  setAngleWheelUI("vortexRotXWheel", "vortexRotXDot", "vortexRotXVal", state.vortex.rotX);
+  setAngleWheelUI("vortexRotYWheel", "vortexRotYDot", "vortexRotYVal", state.vortex.rotY);
+  setAngleWheelUI("vortexRotZWheel", "vortexRotZDot", "vortexRotZVal", state.vortex.rotZ);
+  setAngleWheelUI("cameraRotXWheel", "cameraRotXDot", "cameraRotXVal", state.camera.rotX);
+  setAngleWheelUI("cameraRotYWheel", "cameraRotYDot", "cameraRotYVal", state.camera.rotY);
+  setAngleWheelUI("cameraRotZWheel", "cameraRotZDot", "cameraRotZVal", state.camera.rotZ);
+
+  // Animation
+  setPill("emitterAnimEnabled", state.animation.emitterEnabled);
+  setPill("emitterVelocityAffected", state.animation.emitterVelocityAffected);
+  setSlider("emitterVelocityAmount", state.animation.emitterVelocityAmount, 1);
+  setPill("emitterAnimX", state.animation.emitterX.enabled);
+  setPill("emitterAnimY", state.animation.emitterY.enabled);
+  setPill("emitterAnimZ", state.animation.emitterZ.enabled);
+  setSlider("emitterAnimXSpeed", state.animation.emitterX.speed, 1);
+  setSlider("emitterAnimYSpeed", state.animation.emitterY.speed, 1);
+  setSlider("emitterAnimZSpeed", state.animation.emitterZ.speed, 1);
+  setSelect("emitterAnimXType", state.animation.emitterX.type);
+  setSelect("emitterAnimYType", state.animation.emitterY.type);
+  setSelect("emitterAnimZType", state.animation.emitterZ.type);
+
+  setPill("vortexAnimEnabled", state.animation.vortexEnabled);
+  setPill("vortexAnimX", state.animation.vortexX.enabled);
+  setPill("vortexAnimY", state.animation.vortexY.enabled);
+  setPill("vortexAnimZ", state.animation.vortexZ.enabled);
+  setSlider("vortexAnimXSpeed", state.animation.vortexX.speed, 1);
+  setSlider("vortexAnimYSpeed", state.animation.vortexY.speed, 1);
+  setSlider("vortexAnimZSpeed", state.animation.vortexZ.speed, 1);
+  setSelect("vortexAnimXType", state.animation.vortexX.type);
+  setSelect("vortexAnimYType", state.animation.vortexY.type);
+  setSelect("vortexAnimZType", state.animation.vortexZ.type);
+
+  setPill("attractorAnimEnabled", state.animation.attractorEnabled);
+  setPill("attractorAnimX", state.animation.attractorX.enabled);
+  setPill("attractorAnimY", state.animation.attractorY.enabled);
+  setPill("attractorAnimZ", state.animation.attractorZ.enabled);
+  setSlider("attractorAnimXSpeed", state.animation.attractorX.speed, 1);
+  setSlider("attractorAnimYSpeed", state.animation.attractorY.speed, 1);
+  setSlider("attractorAnimZSpeed", state.animation.attractorZ.speed, 1);
+  setSelect("attractorAnimXType", state.animation.attractorX.type);
+  setSelect("attractorAnimYType", state.animation.attractorY.type);
+  setSelect("attractorAnimZType", state.animation.attractorZ.type);
+
   updateShapeVisibility();
   updateColorModeVisibility();
   updateDirectionVisibility();
-  updateDofVisibility();
   updateForcesVisibility();
   updateForceModeVisibility();
   updateVortexVisibility();
   updateAttractorVisibility();
   updateShadingVisibility();
+  updateWireframeVisibility();
   updateBackgroundVisibility();
 }
 
@@ -97,54 +212,139 @@ function setDisplay(id, show) {
   if (el) el.style.display = show ? "" : "none";
 }
 
+function normalizeDegrees(deg) {
+  if (!Number.isFinite(deg)) return 0;
+  let d = deg % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
+}
+
+function setAngleWheelUI(wheelId, dotId, valueId, degrees) {
+  const wheel = document.getElementById(wheelId);
+  const dot = document.getElementById(dotId);
+  const valueEl = document.getElementById(valueId);
+  if (!wheel || !dot) return;
+
+  const deg = normalizeDegrees(degrees);
+  if (valueEl) valueEl.textContent = `${Math.round(deg)}°`;
+
+  const rect = wheel.getBoundingClientRect();
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const r = Math.max(0, Math.min(cx, cy) - 6);
+  const theta = ((deg - 90) * Math.PI) / 180;
+  dot.style.left = `${cx + Math.cos(theta) * r}px`;
+  dot.style.top = `${cy + Math.sin(theta) * r}px`;
+}
+
+function setupAngleWheel({ wheelId, dotId, valueId, resetBtnId, getDegrees, setDegrees }) {
+  const wheel = document.getElementById(wheelId);
+  if (!wheel) return;
+
+  const applyFromState = () => {
+    setAngleWheelUI(wheelId, dotId, valueId, getDegrees());
+  };
+
+  const setFromPointerEvent = (e) => {
+    const rect = wheel.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const raw = (Math.atan2(dy, dx) * 180) / Math.PI; // -180..180 (0 at right)
+    const deg = normalizeDegrees(raw + 90); // 0 at top
+    setDegrees(deg);
+    setAngleWheelUI(wheelId, dotId, valueId, deg);
+  };
+
+  wheel.addEventListener("pointerdown", (e) => {
+    wheel.setPointerCapture(e.pointerId);
+    setFromPointerEvent(e);
+  });
+  wheel.addEventListener("pointermove", (e) => {
+    if (!wheel.hasPointerCapture(e.pointerId)) return;
+    setFromPointerEvent(e);
+  });
+  wheel.addEventListener("pointerup", (e) => {
+    if (!wheel.hasPointerCapture(e.pointerId)) return;
+    wheel.releasePointerCapture(e.pointerId);
+  });
+  wheel.addEventListener("pointercancel", (e) => {
+    if (!wheel.hasPointerCapture(e.pointerId)) return;
+    wheel.releasePointerCapture(e.pointerId);
+  });
+
+  if (resetBtnId) {
+    const btn = document.getElementById(resetBtnId);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        setDegrees(0);
+        applyFromState();
+      });
+    }
+  }
+
+  applyFromState();
+}
+
 function updateShapeVisibility() {
   const isSphere = state.particle.shape === "sphere";
   const is2D = ["circle", "square"].includes(state.particle.shape);
-  setDisplay("sphereSubdivisionsGroup", isSphere);
-  setDisplay("softnessGroup", is2D);
+  setDisplay("sphereDetailControl", isSphere);
+  setDisplay("softnessControl", is2D);
+  setDisplay("spin2dControls", is2D);
+  setDisplay("spin3dControls", !is2D);
 }
 
 function updateColorModeVisibility() {
-  setDisplay("solidColorGroup", state.particle.colorMode === "solid");
-  setDisplay("gradientEditorGroup", state.particle.colorMode === "gradient");
+  const isSolid = state.particle.colorMode === "solid";
+  setDisplay("solidColorControl", isSolid);
+  setDisplay("gradientControl", !isSolid);
 }
 
 function updateDirectionVisibility() {
-  setDisplay("coneAngleGroup", state.emitter.direction === "directional");
-}
-
-function updateDofVisibility() {
-  setDisplay("dofSection", state.dof.enabled);
+  const showCone = state.emitter.direction === "directional";
+  const cone = document.getElementById("coneAngle");
+  const coneControl = cone ? cone.closest(".control") : null;
+  if (coneControl) coneControl.style.display = showCone ? "" : "none";
 }
 
 function updateForcesVisibility() {
-  setDisplay("forcesSection", state.forces.enabled);
+  const el = document.getElementById("forcesControls");
+  if (el) el.classList.toggle("hidden-controls", !state.forces.enabled);
 }
 
 function updateForceModeVisibility() {
   const isTurbulence = state.forces.mode === "turbulence";
-  setDisplay("turbulenceGroup", isTurbulence);
-  setDisplay("curlGroup", !isTurbulence);
+  setDisplay("turbulenceControls", isTurbulence);
+  setDisplay("curlControls", !isTurbulence);
 }
 
 function updateVortexVisibility() {
-  setDisplay("vortexSection", state.vortex.enabled);
+  setDisplay("vortexControls", state.vortex.enabled);
 }
 
 function updateAttractorVisibility() {
-  setDisplay("attractorSection", state.attractor.enabled);
+  setDisplay("attractorControls", state.attractor.enabled);
 }
 
 function updateShadingVisibility() {
-  setDisplay("shadingSection", state.shading.enabled);
+  const el = document.getElementById("shadingControls");
+  if (el) el.classList.toggle("hidden-controls", !state.shading.enabled);
+}
+
+function updateWireframeVisibility() {
+  setDisplay("wireframeColorControls", state.shading.wireframeEnabled);
+  setDisplay("wireframeColorPicker", state.shading.wireframeEnabled && !state.shading.wireframeSameColor);
 }
 
 function updateBackgroundVisibility() {
   const mode = state.background.mode;
-  setDisplay("bgSolidGroup", mode === "solid");
-  setDisplay("bgGradientGroup", mode !== "solid");
-  setDisplay("bgLinearDirectionGroup", mode === "linear-gradient");
-  setDisplay("bgRadialCenterGroup", mode === "radial-gradient");
+  setDisplay("bgSolidControls", mode === "solid");
+  setDisplay("bgGradientControls", mode === "linear" || mode === "radial");
+  setDisplay("bgLinearControls", mode === "linear");
+  setDisplay("bgRadialControls", mode === "radial");
 }
 
 // ============================================================================
@@ -152,6 +352,22 @@ function updateBackgroundVisibility() {
 // ============================================================================
 
 export function setupEventListeners(callbacks = {}) {
+  const setupPill = (id, getter, setter, onChange) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const apply = (on) => {
+      el.dataset.state = on ? "on" : "off";
+      el.textContent = on ? "On" : "Off";
+    };
+    apply(Boolean(getter()));
+    el.addEventListener("click", () => {
+      const next = !Boolean(getter());
+      setter(next);
+      apply(next);
+      if (onChange) onChange(next);
+    });
+  };
+
   // Helper to setup select elements
   const setupSelect = (id, setter, onChangeCallback) => {
     const el = document.getElementById(id);
@@ -166,8 +382,12 @@ export function setupEventListeners(callbacks = {}) {
   const setupColor = (id, setter) => {
     const el = document.getElementById(id);
     if (!el) return;
+    const display = document.getElementById(id + "Val");
+    if (display) display.textContent = el.value;
     el.addEventListener("input", (e) => {
-      setter(hexToRgb(e.target.value));
+      const hex = e.target.value;
+      setter(hexToRgb(hex));
+      if (display) display.textContent = hex;
     });
   };
   
@@ -234,59 +454,250 @@ export function setupEventListeners(callbacks = {}) {
   });
   
   // Particle settings
-  setupSlider("emissionRate", (v) => { state.particle.emissionRate = v; });
-  setupSlider("particleSize", (v) => { state.particle.size = v; });
-  setupSlider("particleOpacity", (v) => { state.particle.opacity = v; }, 2);
   setupSelect("particleShape", (v) => { state.particle.shape = v; }, updateShapeVisibility);
-  setupSelect("particleColorMode", (v) => { state.particle.colorMode = v; }, updateColorModeVisibility);
+  setupSlider("softness", (v) => { state.particle.softness = v; }, 2);
+  setupSlider("sphereDetail", (v) => { state.particle.sphereSubdivisions = v; });
+  setupSlider("lifeSeconds", (v) => { state.particle.lifeSeconds = v; }, 1);
+  setupSlider("lifeRandom", (v) => { state.particle.lifeRandom = v; }, 2);
+  setupSlider("particleSize", (v) => { state.particle.size = v; });
+  setupSlider("sizeRandom", (v) => { state.particle.sizeRandom = v; }, 2);
+  setupSelect("colorMode", (v) => { state.particle.colorMode = v; }, updateColorModeVisibility);
   setupColor("solidColor", (v) => { state.particle.solidColor = v; });
-  setupSelect("blendMode", (v) => { state.particle.blendMode = v; });
+  setupSelect("blendMode", (v) => { state.particle.blendMode = v === "alpha" ? "normal" : v; });
+  setupSlider("particleOpacity", (v) => { state.particle.opacity = v; }, 2);
   
   // Emitter settings
   setupSelect("emitterShape", (v) => { state.emitter.shape = v; });
-  setupSelect("emitFrom", (v) => { state.emitter.emitFrom = v; });
-  setupSelect("emissionDirection", (v) => { state.emitter.direction = v; }, updateDirectionVisibility);
+  setupSlider("emitterSize", (v) => { state.emitter.size = v; }, 2);
+  setupSelect("emitFrom", (v) => { state.emitter.emitFrom = v === "edge" ? "surface" : "volume"; });
+  setupSelect("emissionDirection", (v) => {
+    state.emitter.direction = v === "outwards" ? "outward" : v === "bidirectional" ? "spherical" : "directional";
+  }, updateDirectionVisibility);
+  setupSlider("emissionRate", (v) => { state.particle.emissionRate = v; });
+  setupSlider("emitterPosX", (v) => { state.emitter.pos[0] = v; }, 2);
+  setupSlider("emitterPosY", (v) => { state.emitter.pos[1] = v; }, 2);
+  setupSlider("emitterPosZ", (v) => { state.emitter.pos[2] = v; }, 2);
+  setupPill("emitterGizmo", () => state.gizmos.emitterEnabled, (v) => { state.gizmos.emitterEnabled = v; });
+  setupSlider("coneAngle", (v) => { state.emitter.coneAngle = v; });
+  setupSlider("initialSpeed", (v) => { state.particle.initialSpeed = v; }, 2);
+  setupSlider("speedRandom", (v) => { state.emitter.speedRandom = v; }, 2);
+  setupSlider("spinRate2d", (v) => { state.particle.spinRateX = v; state.particle.spinRateY = v; state.particle.spinRateZ = v; }, 1);
+  setupSlider("spinRateX", (v) => { state.particle.spinRateX = v; }, 1);
+  setupSlider("spinRateY", (v) => { state.particle.spinRateY = v; }, 1);
+  setupSlider("spinRateZ", (v) => { state.particle.spinRateZ = v; }, 1);
+  setupSlider("spinRandom", (v) => { state.particle.spinRandom = v; }, 1);
   
   // Forces
-  setupCheckbox("forcesEnabled", (v) => { 
-    state.forces.enabled = v;
-    updateForcesVisibility();
-  });
+  setupPill("forcesEnabled", () => state.forces.enabled, (v) => { state.forces.enabled = v; }, () => updateForcesVisibility());
   setupSelect("forceMode", (v) => { state.forces.mode = v; }, updateForceModeVisibility);
+  setupSlider("turbulence", (v) => { state.forces.turbulenceStrength = v; }, 1);
+  setupSlider("turbulenceScale", (v) => { state.forces.turbulenceScale = v; }, 1);
+  setupSlider("curlStrength", (v) => { state.forces.curlStrength = v; }, 1);
+  setupSlider("curlScale", (v) => { state.forces.curlScale = v; }, 1);
+  setupSlider("gravity", (v) => { state.forces.gravity = v; }, 2);
+  setupSlider("windX", (v) => { state.forces.wind[0] = v; }, 2);
+  setupSlider("windY", (v) => { state.forces.wind[1] = v; }, 2);
+  setupSlider("windZ", (v) => { state.forces.wind[2] = v; }, 2);
+  setupSlider("drag", (v) => { state.forces.drag = v; }, 2);
+  setupPill("groundEnabled", () => state.forces.groundEnabled, (v) => { state.forces.groundEnabled = v; });
+  setupSlider("groundLevel", (v) => { state.forces.groundLevel = v; }, 2);
+  setupSlider("bounce", (v) => { state.forces.bounce = v; }, 2);
   
   // Vortex
-  setupCheckbox("vortexEnabled", (v) => { 
-    state.vortex.enabled = v;
-    updateVortexVisibility();
-  });
+  setupPill("vortexEnabled", () => state.vortex.enabled, (v) => { state.vortex.enabled = v; }, () => updateVortexVisibility());
+  setupSlider("vortexStrength", (v) => { state.vortex.strength = v; }, 1);
+  setupSlider("vortexRadius", (v) => { state.vortex.radius = v; }, 1);
+  setupSlider("vortexPosX", (v) => { state.vortex.pos[0] = v; }, 2);
+  setupSlider("vortexPosY", (v) => { state.vortex.pos[1] = v; }, 2);
+  setupSlider("vortexPosZ", (v) => { state.vortex.pos[2] = v; }, 2);
+  setupPill("vortexGizmo", () => state.gizmos.vortexEnabled, (v) => { state.gizmos.vortexEnabled = v; });
   
   // Attractor
-  setupCheckbox("attractorEnabled", (v) => { 
-    state.attractor.enabled = v;
-    updateAttractorVisibility();
-  });
+  setupPill("attractorEnabled", () => state.attractor.enabled, (v) => { state.attractor.enabled = v; }, () => updateAttractorVisibility());
+  setupSlider("attractorStrength", (v) => { state.attractor.strength = v; }, 1);
+  setupSlider("attractorRadius", (v) => { state.attractor.radius = v; }, 1);
+  setupSlider("attractorPosX", (v) => { state.attractor.pos[0] = v; }, 2);
+  setupSlider("attractorPosY", (v) => { state.attractor.pos[1] = v; }, 2);
+  setupSlider("attractorPosZ", (v) => { state.attractor.pos[2] = v; }, 2);
+  setupPill("attractorGizmo", () => state.gizmos.attractorEnabled, (v) => { state.gizmos.attractorEnabled = v; });
   
   // Shading
-  setupCheckbox("shadingEnabled", (v) => { 
-    state.shading.enabled = v;
-    updateShadingVisibility();
-  });
+  setupPill("shadingEnabled", () => state.shading.enabled, (v) => { state.shading.enabled = v; }, () => updateShadingVisibility());
+  setupPill("surfaceEnabled", () => state.shading.surfaceEnabled, (v) => { state.shading.surfaceEnabled = v; });
+  setupPill("wireframeEnabled", () => state.shading.wireframeEnabled, (v) => { state.shading.wireframeEnabled = v; }, () => updateWireframeVisibility());
+  setupPill("wireframeSameColor", () => state.shading.wireframeSameColor, (v) => { state.shading.wireframeSameColor = v; }, () => updateWireframeVisibility());
+  setupColor("wireframeColor", (v) => { state.shading.wireframeColor = v; });
+  setupSlider("lightPosX", (v) => { state.shading.lightPos[0] = v; }, 2);
+  setupSlider("lightPosY", (v) => { state.shading.lightPos[1] = v; }, 2);
+  setupSlider("lightPosZ", (v) => { state.shading.lightPos[2] = v; }, 2);
+  setupPill("lightGizmo", () => state.gizmos.lightEnabled, (v) => { state.gizmos.lightEnabled = v; });
+  setupColor("baseColor", (v) => { state.shading.lightColor = v; });
+  setupSlider("lightIntensity", (v) => { state.shading.lightIntensity = v; }, 1);
   setupSelect("shadingStyle", (v) => { state.shading.style = v; });
-  setupColor("lightColor", (v) => { state.shading.lightColor = v; });
-  
-  // DOF
-  setupCheckbox("dofEnabled", (v) => { 
-    state.dof.enabled = v;
-    updateDofVisibility();
-  });
+  setupSlider("rimIntensity", (v) => { state.shading.rimIntensity = v; }, 2);
+  setupSlider("specIntensity", (v) => { state.shading.specIntensity = v; }, 2);
+
+  // Camera + DOF
+  setupPill("cameraViewEnabled", () => state.camera.viewEnabled, (v) => { state.camera.viewEnabled = v; });
+  setupSlider("cameraPosX", (v) => { state.camera.eye[0] = v; }, 2);
+  setupSlider("cameraPosY", (v) => { state.camera.eye[1] = v; }, 2);
+  setupSlider("cameraPosZ", (v) => { state.camera.eye[2] = v; }, 2);
+  setupPill("cameraGizmo", () => state.gizmos.cameraEnabled, (v) => { state.gizmos.cameraEnabled = v; });
+  setupSlider("focusDepth", (v) => { state.dof.depthSlider = v; }, 2);
+  setupSlider("aperture", (v) => { state.dof.apertureSlider = v; }, 2);
+  setupPill("focusNavigator", () => state.gizmos.focusNavigatorEnabled, (v) => { state.gizmos.focusNavigatorEnabled = v; });
   
   // Background
   setupSelect("bgMode", (v) => { state.background.mode = v; }, updateBackgroundVisibility);
   setupColor("bgSolidColor", (v) => { state.background.solidColor = v; });
+  setupSelect("bgLinearDirection", (v) => { state.background.linearDirection = v; });
+  setupSlider("bgRadialCenterX", (v) => { state.background.radialCenter[0] = v; }, 2);
+  setupSlider("bgRadialCenterY", (v) => { state.background.radialCenter[1] = v; }, 2);
+
+  // Animation
+  setupPill("emitterAnimEnabled", () => state.animation.emitterEnabled, (v) => { state.animation.emitterEnabled = v; });
+  setupPill("emitterVelocityAffected", () => state.animation.emitterVelocityAffected, (v) => { state.animation.emitterVelocityAffected = v; });
+  setupSlider("emitterVelocityAmount", (v) => { state.animation.emitterVelocityAmount = v; }, 1);
+  setupPill("emitterAnimX", () => state.animation.emitterX.enabled, (v) => { state.animation.emitterX.enabled = v; });
+  setupPill("emitterAnimY", () => state.animation.emitterY.enabled, (v) => { state.animation.emitterY.enabled = v; });
+  setupPill("emitterAnimZ", () => state.animation.emitterZ.enabled, (v) => { state.animation.emitterZ.enabled = v; });
+  setupSlider("emitterAnimXSpeed", (v) => { state.animation.emitterX.speed = v; }, 1);
+  setupSlider("emitterAnimYSpeed", (v) => { state.animation.emitterY.speed = v; }, 1);
+  setupSlider("emitterAnimZSpeed", (v) => { state.animation.emitterZ.speed = v; }, 1);
+  setupSelect("emitterAnimXType", (v) => { state.animation.emitterX.type = v; });
+  setupSelect("emitterAnimYType", (v) => { state.animation.emitterY.type = v; });
+  setupSelect("emitterAnimZType", (v) => { state.animation.emitterZ.type = v; });
+
+  setupPill("vortexAnimEnabled", () => state.animation.vortexEnabled, (v) => { state.animation.vortexEnabled = v; });
+  setupPill("vortexAnimX", () => state.animation.vortexX.enabled, (v) => { state.animation.vortexX.enabled = v; });
+  setupPill("vortexAnimY", () => state.animation.vortexY.enabled, (v) => { state.animation.vortexY.enabled = v; });
+  setupPill("vortexAnimZ", () => state.animation.vortexZ.enabled, (v) => { state.animation.vortexZ.enabled = v; });
+  setupSlider("vortexAnimXSpeed", (v) => { state.animation.vortexX.speed = v; }, 1);
+  setupSlider("vortexAnimYSpeed", (v) => { state.animation.vortexY.speed = v; }, 1);
+  setupSlider("vortexAnimZSpeed", (v) => { state.animation.vortexZ.speed = v; }, 1);
+  setupSelect("vortexAnimXType", (v) => { state.animation.vortexX.type = v; });
+  setupSelect("vortexAnimYType", (v) => { state.animation.vortexY.type = v; });
+  setupSelect("vortexAnimZType", (v) => { state.animation.vortexZ.type = v; });
+
+  setupPill("attractorAnimEnabled", () => state.animation.attractorEnabled, (v) => { state.animation.attractorEnabled = v; });
+  setupPill("attractorAnimX", () => state.animation.attractorX.enabled, (v) => { state.animation.attractorX.enabled = v; });
+  setupPill("attractorAnimY", () => state.animation.attractorY.enabled, (v) => { state.animation.attractorY.enabled = v; });
+  setupPill("attractorAnimZ", () => state.animation.attractorZ.enabled, (v) => { state.animation.attractorZ.enabled = v; });
+  setupSlider("attractorAnimXSpeed", (v) => { state.animation.attractorX.speed = v; }, 1);
+  setupSlider("attractorAnimYSpeed", (v) => { state.animation.attractorY.speed = v; }, 1);
+  setupSlider("attractorAnimZSpeed", (v) => { state.animation.attractorZ.speed = v; }, 1);
+  setupSelect("attractorAnimXType", (v) => { state.animation.attractorX.type = v; });
+  setupSelect("attractorAnimYType", (v) => { state.animation.attractorY.type = v; });
+  setupSelect("attractorAnimZType", (v) => { state.animation.attractorZ.type = v; });
   
   // Export buttons
   setupButton("recordVideoBtn", callbacks.onRecordVideo);
   setupButton("exportHtmlBtn", callbacks.onExportHtml);
+
+  // Slider reset buttons (use input[data-default])
+  const resetMap = [
+    ["softnessReset", "softness"],
+    ["sphereDetailReset", "sphereDetail"],
+  ];
+  for (const [btnId, inputId] of resetMap) {
+    const btn = document.getElementById(btnId);
+    const input = document.getElementById(inputId);
+    if (!btn || !input) continue;
+    btn.addEventListener("click", () => {
+      const def = input.dataset.default;
+      if (def !== undefined) input.value = def;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  // Fullscreen toggle (optional)
+  const fullscreenBtn = document.getElementById("fullscreenToggle");
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener("click", async () => {
+      try {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch {
+        // Ignore
+      }
+    });
+  }
+
+  // Angle wheels (rotation controls)
+  setupAngleWheel({
+    wheelId: "directionXWheel",
+    dotId: "directionXDot",
+    valueId: "directionXVal",
+    resetBtnId: "directionXReset",
+    getDegrees: () => state.emitter.directionRotX,
+    setDegrees: (v) => { state.emitter.directionRotX = v; },
+  });
+  setupAngleWheel({
+    wheelId: "directionYWheel",
+    dotId: "directionYDot",
+    valueId: "directionYVal",
+    resetBtnId: "directionYReset",
+    getDegrees: () => state.emitter.directionRotY,
+    setDegrees: (v) => { state.emitter.directionRotY = v; },
+  });
+  setupAngleWheel({
+    wheelId: "directionZWheel",
+    dotId: "directionZDot",
+    valueId: "directionZVal",
+    resetBtnId: "directionZReset",
+    getDegrees: () => state.emitter.directionRotZ,
+    setDegrees: (v) => { state.emitter.directionRotZ = v; },
+  });
+
+  setupAngleWheel({
+    wheelId: "vortexRotXWheel",
+    dotId: "vortexRotXDot",
+    valueId: "vortexRotXVal",
+    resetBtnId: "vortexRotXReset",
+    getDegrees: () => state.vortex.rotX,
+    setDegrees: (v) => { state.vortex.rotX = v; },
+  });
+  setupAngleWheel({
+    wheelId: "vortexRotYWheel",
+    dotId: "vortexRotYDot",
+    valueId: "vortexRotYVal",
+    resetBtnId: "vortexRotYReset",
+    getDegrees: () => state.vortex.rotY,
+    setDegrees: (v) => { state.vortex.rotY = v; },
+  });
+  setupAngleWheel({
+    wheelId: "vortexRotZWheel",
+    dotId: "vortexRotZDot",
+    valueId: "vortexRotZVal",
+    resetBtnId: "vortexRotZReset",
+    getDegrees: () => state.vortex.rotZ,
+    setDegrees: (v) => { state.vortex.rotZ = v; },
+  });
+
+  setupAngleWheel({
+    wheelId: "cameraRotXWheel",
+    dotId: "cameraRotXDot",
+    valueId: "cameraRotXVal",
+    resetBtnId: "cameraRotXReset",
+    getDegrees: () => state.camera.rotX,
+    setDegrees: (v) => { state.camera.rotX = v; },
+  });
+  setupAngleWheel({
+    wheelId: "cameraRotYWheel",
+    dotId: "cameraRotYDot",
+    valueId: "cameraRotYVal",
+    resetBtnId: "cameraRotYReset",
+    getDegrees: () => state.camera.rotY,
+    setDegrees: (v) => { state.camera.rotY = v; },
+  });
+  setupAngleWheel({
+    wheelId: "cameraRotZWheel",
+    dotId: "cameraRotZDot",
+    valueId: "cameraRotZVal",
+    resetBtnId: "cameraRotZReset",
+    getDegrees: () => state.camera.rotZ,
+    setDegrees: (v) => { state.camera.rotZ = v; },
+  });
 }
 
 // ============================================================================

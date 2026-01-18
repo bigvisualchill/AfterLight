@@ -441,6 +441,11 @@ export class Renderer {
         color: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
         alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
       },
+      multiply: {
+        // Multiply: src * dst (approx) using destination color factor.
+        color: { srcFactor: "dst", dstFactor: "zero", operation: "add" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+      },
     };
 
     this.particlePipelines = {};

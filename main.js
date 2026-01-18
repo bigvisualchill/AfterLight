@@ -70,19 +70,19 @@ async function init() {
   });
   
   // Setup curve editors
-  sizeCurveEditor = setupCurveEditor("sizeCurveEditor", state.curves.size, (pts) => {
+  sizeCurveEditor = setupCurveEditor("sizeCurveCanvas", state.curves.size, (pts) => {
     state.curves.size = pts;
   });
   
-  opacityCurveEditor = setupCurveEditor("opacityCurveEditor", state.curves.opacity, (pts) => {
+  opacityCurveEditor = setupCurveEditor("opacityCurveCanvas", state.curves.opacity, (pts) => {
     state.curves.opacity = pts;
   });
   
-  colorGradientEditor = setupGradientEditor("colorGradientEditor", state.curves.colorGradient, (pts) => {
+  colorGradientEditor = setupGradientEditor("colorGradientCanvas", state.curves.colorGradient, (pts) => {
     state.curves.colorGradient = pts;
   });
   
-  bgGradientEditor = setupGradientEditor("bgGradientEditor", state.background.gradientPoints, (pts) => {
+  bgGradientEditor = setupGradientEditor("bgGradientCanvas", state.background.gradientPoints, (pts) => {
     state.background.gradientPoints = pts;
   });
   
@@ -322,8 +322,9 @@ function buildBackgroundUniforms() {
   
   // Mode: 0 = transparent, 1 = solid, 2 = linear, 3 = radial
   let mode = 1; // solid
-  if (state.background.mode === "linear-gradient") mode = 2;
-  else if (state.background.mode === "radial-gradient") mode = 3;
+  if (state.background.mode === "transparent") mode = 0;
+  else if (state.background.mode === "linear" || state.background.mode === "linear-gradient") mode = 2;
+  else if (state.background.mode === "radial" || state.background.mode === "radial-gradient") mode = 3;
   
   // First 16 bytes: mode (u32), linearDirection (u32), radialCenter (vec2f)
   u32View[0] = mode;
@@ -399,17 +400,20 @@ function syncEmitterUI() {
   const els = document.getElementById("emitterPosX");
   if (els) {
     els.value = state.emitter.pos[0];
-    document.getElementById("emitterPosXValue").textContent = state.emitter.pos[0].toFixed(2);
+    const v = document.getElementById("emitterPosXVal");
+    if (v) v.textContent = state.emitter.pos[0].toFixed(2);
   }
   const ely = document.getElementById("emitterPosY");
   if (ely) {
     ely.value = state.emitter.pos[1];
-    document.getElementById("emitterPosYValue").textContent = state.emitter.pos[1].toFixed(2);
+    const v = document.getElementById("emitterPosYVal");
+    if (v) v.textContent = state.emitter.pos[1].toFixed(2);
   }
   const elz = document.getElementById("emitterPosZ");
   if (elz) {
     elz.value = state.emitter.pos[2];
-    document.getElementById("emitterPosZValue").textContent = state.emitter.pos[2].toFixed(2);
+    const v = document.getElementById("emitterPosZVal");
+    if (v) v.textContent = state.emitter.pos[2].toFixed(2);
   }
 }
 
@@ -417,17 +421,20 @@ function syncVortexUI() {
   const els = document.getElementById("vortexPosX");
   if (els) {
     els.value = state.vortex.pos[0];
-    document.getElementById("vortexPosXValue").textContent = state.vortex.pos[0].toFixed(2);
+    const v = document.getElementById("vortexPosXVal");
+    if (v) v.textContent = state.vortex.pos[0].toFixed(2);
   }
   const ely = document.getElementById("vortexPosY");
   if (ely) {
     ely.value = state.vortex.pos[1];
-    document.getElementById("vortexPosYValue").textContent = state.vortex.pos[1].toFixed(2);
+    const v = document.getElementById("vortexPosYVal");
+    if (v) v.textContent = state.vortex.pos[1].toFixed(2);
   }
   const elz = document.getElementById("vortexPosZ");
   if (elz) {
     elz.value = state.vortex.pos[2];
-    document.getElementById("vortexPosZValue").textContent = state.vortex.pos[2].toFixed(2);
+    const v = document.getElementById("vortexPosZVal");
+    if (v) v.textContent = state.vortex.pos[2].toFixed(2);
   }
 }
 
@@ -435,17 +442,20 @@ function syncAttractorUI() {
   const els = document.getElementById("attractorPosX");
   if (els) {
     els.value = state.attractor.pos[0];
-    document.getElementById("attractorPosXValue").textContent = state.attractor.pos[0].toFixed(2);
+    const v = document.getElementById("attractorPosXVal");
+    if (v) v.textContent = state.attractor.pos[0].toFixed(2);
   }
   const ely = document.getElementById("attractorPosY");
   if (ely) {
     ely.value = state.attractor.pos[1];
-    document.getElementById("attractorPosYValue").textContent = state.attractor.pos[1].toFixed(2);
+    const v = document.getElementById("attractorPosYVal");
+    if (v) v.textContent = state.attractor.pos[1].toFixed(2);
   }
   const elz = document.getElementById("attractorPosZ");
   if (elz) {
     elz.value = state.attractor.pos[2];
-    document.getElementById("attractorPosZValue").textContent = state.attractor.pos[2].toFixed(2);
+    const v = document.getElementById("attractorPosZVal");
+    if (v) v.textContent = state.attractor.pos[2].toFixed(2);
   }
 }
 
