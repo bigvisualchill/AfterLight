@@ -149,7 +149,7 @@ export function initElements() {
         particleVelocityControl,
         particleSpinControl,
       ]) {
-        ctrl?.remove?.();
+        if (ctrl && ctrl.parentElement === emitterContainer) ctrl.remove();
       }
 
       // Remove empty wrapper stacks if they exist (prevents blank gaps).
