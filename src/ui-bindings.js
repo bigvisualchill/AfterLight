@@ -101,6 +101,7 @@ export function initElements() {
     field.type = "text";
     field.inputMode = "decimal";
     field.className = "editable-value";
+    field.id = spanId;
     field.autocomplete = "off";
     field.spellcheck = false;
     const formatField = (v) => {
