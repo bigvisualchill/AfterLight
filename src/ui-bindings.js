@@ -775,6 +775,17 @@ export function setupCurveEditor(canvasId, points, onChange) {
   const ctx = canvas.getContext("2d");
   let selectedPoint = -1;
   let isDragging = false;
+  let activePointerId = null;
+
+  const toCanvasCoords = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  };
   
   function draw() {
     const w = canvas.width;
@@ -839,16 +850,16 @@ export function setupCurveEditor(canvasId, points, onChange) {
     return -1;
   }
   
-  canvas.addEventListener("mousedown", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const { x: mx, y: my } = toCanvasCoords(e);
+
     selectedPoint = getPointAt(mx, my);
     if (selectedPoint >= 0) {
       isDragging = true;
+      activePointerId = e.pointerId;
+      canvas.setPointerCapture(e.pointerId);
     } else if (e.detail === 2) {
-      // Double click - add point
       const x = mx / canvas.width;
       const y = 1 - my / canvas.height;
       points.push({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) });
@@ -858,37 +869,35 @@ export function setupCurveEditor(canvasId, points, onChange) {
     }
   });
   
-  canvas.addEventListener("mousemove", (e) => {
+  canvas.addEventListener("pointermove", (e) => {
     if (!isDragging || selectedPoint < 0) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+
+    const { x: mx, y: my } = toCanvasCoords(e);
+
     const p = points[selectedPoint];
-    // First and last points can't move horizontally
     if (selectedPoint > 0 && selectedPoint < points.length - 1) {
       p.x = clamp(mx / canvas.width, 0.01, 0.99);
     }
     p.y = clamp(1 - my / canvas.height, 0, 1);
-    
+
     onChange(points);
     draw();
   });
   
-  canvas.addEventListener("mouseup", () => {
+  const endDrag = (e) => {
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
     isDragging = false;
-  });
-  
-  canvas.addEventListener("mouseleave", () => {
-    isDragging = false;
-  });
+    activePointerId = null;
+  };
+
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
   
   canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { x: mx, y: my } = toCanvasCoords(e);
     
     const idx = getPointAt(mx, my);
     if (idx > 0 && idx < points.length - 1) {
@@ -914,6 +923,17 @@ export function setupGradientEditor(canvasId, points, onChange) {
   const ctx = canvas.getContext("2d");
   let selectedPoint = -1;
   let isDragging = false;
+  let activePointerId = null;
+
+  const toCanvasCoords = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  };
   
   function draw() {
     const w = canvas.width;
@@ -959,14 +979,15 @@ export function setupGradientEditor(canvasId, points, onChange) {
     return -1;
   }
   
-  canvas.addEventListener("mousedown", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const { x: mx, y: my } = toCanvasCoords(e);
     
     selectedPoint = getPointAt(mx, my);
     if (selectedPoint >= 0) {
       isDragging = true;
+      activePointerId = e.pointerId;
+      canvas.setPointerCapture(e.pointerId);
     } else if (my >= canvas.height - 25 && e.detail === 2) {
       // Double click - add point
       const x = mx / canvas.width;
@@ -978,32 +999,36 @@ export function setupGradientEditor(canvasId, points, onChange) {
     }
   });
   
-  canvas.addEventListener("mousemove", (e) => {
+  canvas.addEventListener("pointermove", (e) => {
     if (!isDragging || selectedPoint < 0) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    if (!canvas.hasPointerCapture(e.pointerId)) return;
+
+    const { x: mx } = toCanvasCoords(e);
     
     // First and last points can't move
     if (selectedPoint > 0 && selectedPoint < points.length - 1) {
-      points[selectedPoint].x = clamp(mx / canvas.width, 0.01, 0.99);
+      const selectedObj = points[selectedPoint];
+      selectedObj.x = clamp(mx / canvas.width, 0.01, 0.99);
       points.sort((a, b) => a.x - b.x);
-      // Re-find selected point after sort
-      selectedPoint = points.findIndex(p => p === points[selectedPoint]);
+      selectedPoint = points.indexOf(selectedObj);
     }
     
     onChange(points);
     draw();
   });
   
-  canvas.addEventListener("mouseup", () => {
+  const endDrag = (e) => {
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
     isDragging = false;
-  });
+    activePointerId = null;
+  };
+
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
   
   canvas.addEventListener("dblclick", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { x: mx, y: my } = toCanvasCoords(e);
     
     const idx = getPointAt(mx, my);
     if (idx >= 0) {
@@ -1031,9 +1056,7 @@ export function setupGradientEditor(canvasId, points, onChange) {
   
   canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { x: mx, y: my } = toCanvasCoords(e);
     
     const idx = getPointAt(mx, my);
     if (idx > 0 && idx < points.length - 1) {
