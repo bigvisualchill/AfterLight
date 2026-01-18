@@ -149,10 +149,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
   let noiseZ = textureSample(noiseTexture, noiseSampler, uvZ).r;
   let noise = noiseX * w.x + noiseY * w.y + noiseZ * w.z;
   let noiseMix = mix(1.0, noise, uniforms.shapeParams.z);
-  let blendScale = uniforms.motionBlurPad.w;
-  let alpha = input.opacity * blendScale;
-  let premul = step(0.5, uniforms.motionBlurPad.z);
-  let colorOut = shaded * noiseMix * blendScale;
+  let alpha = input.opacity;
+  let colorOut = shaded * noiseMix;
   if (uniforms.shapeParams.x > 1.5) {
     let edge = length(input.localPos.xy);
     if (uniforms.shapeParams.w > 0.001) {
@@ -161,15 +159,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         discard;
       }
       let outAlpha = alpha * shapeMask;
-      let outColor = mix(colorOut, colorOut * outAlpha, premul);
-      return vec4<f32>(outColor, outAlpha);
+      return vec4<f32>(colorOut * outAlpha, outAlpha);
     }
     if (edge > 1.0) {
       discard;
     }
     let outAlpha = alpha;
-    let outColor = mix(colorOut, colorOut * outAlpha, premul);
-    return vec4<f32>(outColor, outAlpha);
+    return vec4<f32>(colorOut * outAlpha, outAlpha);
   } else if (uniforms.shapeParams.x > 0.5) {
     let edge = max(abs(input.localPos.x), abs(input.localPos.y));
     if (uniforms.shapeParams.w > 0.001) {
@@ -178,15 +174,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
         discard;
       }
       let outAlpha = alpha * shapeMask;
-      let outColor = mix(colorOut, colorOut * outAlpha, premul);
-      return vec4<f32>(outColor, outAlpha);
+      return vec4<f32>(colorOut * outAlpha, outAlpha);
     }
     if (edge > 1.0) {
       discard;
     }
     let outAlpha = alpha;
-    let outColor = mix(colorOut, colorOut * outAlpha, premul);
-    return vec4<f32>(outColor, outAlpha);
+    return vec4<f32>(colorOut * outAlpha, outAlpha);
   }
   
   // 3D shapes - apply wireframe if enabled
@@ -213,6 +207,5 @@ fn fs_main(input: VertexOut) -> @location(0) vec4<f32> {
   }
   
   let outAlpha = finalAlpha;
-  let outColor = mix(finalColor, finalColor * outAlpha, premul);
-  return vec4<f32>(outColor, outAlpha);
+  return vec4<f32>(finalColor * outAlpha, outAlpha);
 }

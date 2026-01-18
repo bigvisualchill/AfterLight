@@ -441,7 +441,8 @@ export class Renderer {
     // Create three particle pipelines: additive, screen, normal
     const blendModes = {
       additive: {
-        color: { srcFactor: "src-alpha", dstFactor: "one", operation: "add" },
+        // Premultiplied additive.
+        color: { srcFactor: "one", dstFactor: "one", operation: "add" },
         alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
       },
       screen: {

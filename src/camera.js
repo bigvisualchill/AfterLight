@@ -155,8 +155,10 @@ function buildUniformData(timeSeconds) {
   uniformData[35] = 0;
   uniformData[36] = 0.0;
   uniformData[37] = state.shading.enabled ? 1 : 0;
-  uniformData[38] = state.particle.blendMode === "screen" ? 1 : 0;
-  uniformData[39] = state.particle.blendMode === "additive" ? 0.4 : state.particle.blendMode === "screen" ? 0.6 : 1.0;
+  // Keep particle output premultiplied for all blend modes.
+  uniformData[38] = 1.0;
+  // No blend-mode-specific dimming.
+  uniformData[39] = 1.0;
   // shadingParams: flat shading, rim intensity, spec intensity, unused
   uniformData[40] = state.shading.style === "flat" ? 1 : 0;
   uniformData[41] = state.shading.rimIntensity;
