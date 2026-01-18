@@ -603,6 +603,7 @@ export function syncUIFromState() {
   updateVortexVisibility();
   updateAttractorVisibility();
   updateGroundVisibility();
+  updateCameraViewDependencies();
   updateShadingVisibility();
   updateWireframeVisibility();
   updateBackgroundVisibility();
@@ -746,6 +747,10 @@ function updateAttractorVisibility() {
 
 function updateGroundVisibility() {
   setDisplay("groundControls", state.forces.groundEnabled);
+}
+
+function updateCameraViewDependencies() {
+  setDisplay("depthOfFieldGroup", state.camera.viewEnabled);
 }
 
 function updateShadingVisibility() {
@@ -1031,7 +1036,7 @@ export function setupEventListeners(callbacks = {}) {
   setupSlider("specIntensity", (v) => { state.shading.specIntensity = v; }, 2);
 
   // Camera + DOF
-  setupPill("cameraViewEnabled", () => state.camera.viewEnabled, (v) => { state.camera.viewEnabled = v; });
+  setupPill("cameraViewEnabled", () => state.camera.viewEnabled, (v) => { state.camera.viewEnabled = v; }, () => updateCameraViewDependencies());
   setupSlider("cameraPosX", (v) => { state.camera.eye[0] = v; }, 2);
   setupSlider("cameraPosY", (v) => { state.camera.eye[1] = v; }, 2);
   setupSlider("cameraPosZ", (v) => { state.camera.eye[2] = v; }, 2);

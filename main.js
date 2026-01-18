@@ -278,7 +278,8 @@ function frame(now) {
   
   // Build DOF uniforms
   let cocData = null, blurData = null, compositeData = null, blurNearData = null;
-  if (state.dof.enabled) {
+  const dofActive = state.camera.viewEnabled && state.dof.enabled;
+  if (dofActive) {
     const dofParams = computeDOFParams(dt, canvas.width, canvas.height);
     cocData = dofParams.cocUniformData;
     blurData = dofParams.blurUniformData;
@@ -290,11 +291,11 @@ function frame(now) {
   }
   
   // Update GPU buffers
-  renderer.updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData);
+  renderer.updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData, dofActive);
   renderer.updateInstances(instanceData, particleCount);
   
   // Render
-  renderer.render(particleCount, state.dof.enabled, blurNearData);
+  renderer.render(particleCount, dofActive, blurNearData);
   
   // Render gizmos
   renderAllGizmos(gizmoCtx, gizmoCanvas.width, gizmoCanvas.height);

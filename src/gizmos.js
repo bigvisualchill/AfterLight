@@ -513,7 +513,7 @@ export function renderAllGizmos(ctx, width, height) {
     drawCameraGizmo(ctx, width, height);
   }
   
-  if (state.gizmos.focusNavigatorEnabled && state.dof.enabled) {
+  if (state.camera.viewEnabled && state.gizmos.focusNavigatorEnabled && state.dof.enabled) {
     drawFocusNavigator(ctx, width, height);
   }
 }

@@ -722,11 +722,11 @@ export class Renderer {
   /**
    * Update uniform buffers with new data
    */
-  updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData) {
+  updateUniforms(uniformData, bgUniformData, cocData, blurData, compositeData, dofEnabled) {
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
     this.device.queue.writeBuffer(this.backgroundUniformBuffer, 0, bgUniformData);
     
-    if (state.dof.enabled) {
+    if (dofEnabled) {
       this.device.queue.writeBuffer(this.cocBuffer, 0, cocData);
       this.device.queue.writeBuffer(this.blurBuffer, 0, blurData);
       this.device.queue.writeBuffer(this.compositeBuffer, 0, compositeData);
