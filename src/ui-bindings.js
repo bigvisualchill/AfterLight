@@ -1475,6 +1475,8 @@ export function setupGradientEditor(canvasId, points, onChange) {
   let activePointerId = null;
   let didMove = false;
   let dragStart = null;
+  let lastTapMs = 0;
+  let lastTapIdx = -1;
 
   const MARKER_HEIGHT = 20;
   const TRI_HALF = 4;
@@ -1541,9 +1543,6 @@ export function setupGradientEditor(canvasId, points, onChange) {
   }
   
   function getPointAt(mx, my) {
-    const h = canvas.height;
-    if (my < h - (MARKER_HEIGHT + 5)) return -1;
-    
     for (let i = 0; i < points.length; i++) {
       const px = points[i].x * canvas.width;
       if (Math.abs(mx - px) < HIT_RADIUS) return i;
@@ -1619,6 +1618,17 @@ export function setupGradientEditor(canvasId, points, onChange) {
     
     selectedPoint = getPointAt(mx, my);
     if (selectedPoint >= 0) {
+      const nowMs = performance.now();
+      const isDoubleTap = nowMs - lastTapMs < 350 && selectedPoint === lastTapIdx;
+      lastTapMs = nowMs;
+      lastTapIdx = selectedPoint;
+
+      if (isDoubleTap) {
+        openColorChooser(selectedPoint);
+        draw();
+        return;
+      }
+
       isDragging = true;
       activePointerId = e.pointerId;
       didMove = false;
@@ -1662,20 +1672,6 @@ export function setupGradientEditor(canvasId, points, onChange) {
 
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
-  
-  canvas.addEventListener("dblclick", (e) => {
-    const { x: mx, y: my } = toCanvasCoords(e);
-    const idx = getPointAt(mx, my);
-    if (idx >= 0) {
-      selectedPoint = idx;
-      openColorChooser(idx);
-      draw();
-      return;
-    }
-
-    // Optional convenience: double click empty marker area -> add point
-    if (my >= canvas.height - (MARKER_HEIGHT + 5)) addPoint();
-  });
   
   canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
