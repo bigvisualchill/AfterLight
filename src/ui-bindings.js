@@ -1479,7 +1479,7 @@ export function setupGradientEditor(canvasId, points, onChange) {
   let lastTapIdx = -1;
 
   const MARKER_HEIGHT = 20;
-  const TRI_HALF = 4;
+  const POINT_R = 4;
   const HIT_RADIUS = 8;
   const EPS = 0.001;
 
@@ -1488,9 +1488,12 @@ export function setupGradientEditor(canvasId, points, onChange) {
 
   const colorPicker = document.createElement("input");
   colorPicker.type = "color";
-  colorPicker.style.position = "absolute";
-  colorPicker.style.left = "-9999px";
-  colorPicker.style.top = "0";
+  colorPicker.style.position = "fixed";
+  colorPicker.style.width = "24px";
+  colorPicker.style.height = "24px";
+  colorPicker.style.border = "none";
+  colorPicker.style.padding = "0";
+  colorPicker.style.visibility = "hidden";
   document.body.appendChild(colorPicker);
 
   const cleanup = () => {
@@ -1528,11 +1531,9 @@ export function setupGradientEditor(canvasId, points, onChange) {
       const p = points[i];
       const px = p.x * w;
       
+      const cy = h - MARKER_HEIGHT / 2;
       ctx.beginPath();
-      ctx.moveTo(px, h - MARKER_HEIGHT);
-      ctx.lineTo(px - TRI_HALF, h);
-      ctx.lineTo(px + TRI_HALF, h);
-      ctx.closePath();
+      ctx.arc(px, cy, POINT_R, 0, Math.PI * 2);
       ctx.fillStyle = rgbToHex(p.color);
       ctx.fill();
       ctx.strokeStyle = i === selectedPoint ? "#ffff00" : "#fff";
@@ -1557,27 +1558,53 @@ export function setupGradientEditor(canvasId, points, onChange) {
     }
   }
 
-  function openColorChooser(idx) {
-    if (idx < 0 || idx >= points.length) return;
-    colorPicker.value = rgbToHex(points[idx].color);
-    const applyHex = (hex) => {
-      points[idx].color = hexToRgb(hex);
+  let activeColorIdx = -1;
+  
+  colorPicker.addEventListener("input", (e) => {
+    if (activeColorIdx >= 0 && activeColorIdx < points.length) {
+      points[activeColorIdx].color = hexToRgb(e.target.value);
       onChange(points);
       draw();
-    };
+    }
+  });
+  
+  colorPicker.addEventListener("change", (e) => {
+    if (activeColorIdx >= 0 && activeColorIdx < points.length) {
+      points[activeColorIdx].color = hexToRgb(e.target.value);
+      onChange(points);
+      draw();
+    }
+  });
 
-    const onInput = (e) => applyHex(e.target.value);
-    const onChangeDone = (e) => {
-      applyHex(e.target.value);
-      colorPicker.removeEventListener("input", onInput);
-      colorPicker.removeEventListener("change", onChangeDone);
-    };
+  function openColorChooser(idx, clickX, clickY) {
+    if (idx < 0 || idx >= points.length) return;
+    activeColorIdx = idx;
+    colorPicker.value = rgbToHex(points[idx].color);
 
-    colorPicker.addEventListener("input", onInput);
-    colorPicker.addEventListener("change", onChangeDone);
-
-    if (typeof colorPicker.showPicker === "function") colorPicker.showPicker();
-    else colorPicker.click();
+    // Position near the click, offset so picker opens over the panel
+    const x = clickX ?? 100;
+    const y = clickY ?? 100;
+    colorPicker.style.left = `${x - 12}px`;
+    colorPicker.style.top = `${y - 12}px`;
+    
+    // Make visible so browser positions picker correctly, then hide after opening
+    colorPicker.style.visibility = "visible";
+    
+    // Open the picker
+    try {
+      if (typeof colorPicker.showPicker === "function") {
+        colorPicker.showPicker();
+      } else {
+        colorPicker.click();
+      }
+    } catch (err) {
+      colorPicker.click();
+    }
+    
+    // Hide the input element after a brief moment (picker stays open)
+    setTimeout(() => {
+      colorPicker.style.visibility = "hidden";
+    }, 50);
   }
 
   function addPoint() {
@@ -1624,7 +1651,7 @@ export function setupGradientEditor(canvasId, points, onChange) {
       lastTapIdx = selectedPoint;
 
       if (isDoubleTap) {
-        openColorChooser(selectedPoint);
+        openColorChooser(selectedPoint, e.clientX, e.clientY);
         draw();
         return;
       }
@@ -1682,6 +1709,18 @@ export function setupGradientEditor(canvasId, points, onChange) {
       points.splice(idx, 1);
       selectedPoint = -1;
       onChange(points);
+      draw();
+    }
+  });
+  
+  // Double-click on a gradient point opens color picker
+  canvas.addEventListener("dblclick", (e) => {
+    const { x: mx, y: my } = toCanvasCoords(e);
+    const idx = getPointAt(mx, my);
+    if (idx >= 0) {
+      e.preventDefault();
+      selectedPoint = idx;
+      openColorChooser(idx, e.clientX, e.clientY);
       draw();
     }
   });
