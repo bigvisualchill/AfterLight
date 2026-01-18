@@ -8,8 +8,63 @@ import { hexToRgb, rgbToHex, clamp, roundToStep, formatWithStep, evalCurve, eval
 // ============================================================================
 
 export function initElements() {
-  // All elements are now accessed via document.getElementById directly
-  // This function is kept for backwards compatibility
+  // Enhance settings UI (collapsible line-items)
+  // Called before `setupEventListeners()` from `main.js`.
+  const root = document.querySelector(".settings-panel-container");
+  if (!root) return;
+
+  // Make each range line-item a collapsible `.setting` so the UI can be collapsed per row.
+  const rangeLabels = Array.from(root.querySelectorAll('label[for]'));
+  for (const label of rangeLabels) {
+    if (!(label instanceof HTMLLabelElement)) continue;
+    if (label.closest(".setting")) continue;
+    if (label.querySelector(".collapse-indicator")) continue;
+
+    const targetId = label.getAttribute("for");
+    if (!targetId) continue;
+    const input = document.getElementById(targetId);
+    if (!(input instanceof HTMLInputElement)) continue;
+    if (input.type !== "range") continue;
+
+    // Avoid converting labels that are part of a compound control (e.g. the focus navigator inline toggle)
+    if (label.closest(".inline-toggle")) continue;
+
+    const insertParent = label.parentElement;
+    if (!insertParent) continue;
+
+    // If the slider is wrapped (e.g. `.slider-with-reset`), move that wrapper as a whole.
+    const sliderWrapper = input.closest(".slider-with-reset");
+    const sliderNode = sliderWrapper && sliderWrapper.parentElement === insertParent ? sliderWrapper : input;
+
+    const setting = document.createElement("div");
+    setting.className = "control setting expanded";
+    setting.id = `${targetId}Setting`;
+
+    const body = document.createElement("div");
+    body.className = "control-body range-body";
+
+    // Build the collapse indicator inside the label.
+    const left = document.createElement("span");
+    left.className = "label-left";
+    const collapseBtn = document.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.className = "collapse-indicator";
+    const collapseIcon = document.createElement("span");
+    collapseIcon.textContent = "−";
+    collapseBtn.appendChild(collapseIcon);
+    left.appendChild(collapseBtn);
+
+    while (label.firstChild) left.appendChild(label.firstChild);
+    label.appendChild(left);
+
+    // Replace label in DOM with the new setting wrapper.
+    insertParent.insertBefore(setting, label);
+    setting.appendChild(label);
+    setting.appendChild(body);
+
+    // Move slider element(s) under the body.
+    body.appendChild(sliderNode);
+  }
 }
 
 // ============================================================================
