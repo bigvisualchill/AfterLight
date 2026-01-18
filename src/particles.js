@@ -379,7 +379,7 @@ export function buildInstanceData(instanceData, particleSize, baseUnitsPerPixel)
     const lifeT = p.age / p.life;
     const sizePixels = particleSize * 5 * p.size;
     const size = evalCurve(state.curves.size, lifeT) * sizePixels * baseUnitsPerPixel;
-    const opacity = evalCurve(state.curves.opacity, lifeT) * state.particle.opacity;
+    const opacity = clamp(evalCurve(state.curves.opacity, lifeT) * state.particle.opacity, 0, 1);
     
     let color;
     if (state.particle.colorMode === "solid") {
