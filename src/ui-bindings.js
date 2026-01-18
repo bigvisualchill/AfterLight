@@ -859,16 +859,35 @@ export function setupCurveEditor(canvasId, points, onChange) {
       isDragging = true;
       activePointerId = e.pointerId;
       canvas.setPointerCapture(e.pointerId);
-    } else if (e.detail === 2) {
-      const x = mx / canvas.width;
-      const y = 1 - my / canvas.height;
-      points.push({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) });
-      points.sort((a, b) => a.x - b.x);
-      onChange(points);
-      draw();
     }
   });
-  
+
+  canvas.addEventListener("dblclick", (e) => {
+    const { x: mx, y: my } = toCanvasCoords(e);
+
+    const idx = getPointAt(mx, my);
+    if (idx >= 0) {
+      // Double click a point -> delete (but keep endpoints)
+      if (idx > 0 && idx < points.length - 1) {
+        points.splice(idx, 1);
+        selectedPoint = -1;
+        isDragging = false;
+        activePointerId = null;
+        onChange(points);
+        draw();
+      }
+      return;
+    }
+
+    // Double click empty space -> add point
+    const x = mx / canvas.width;
+    const y = 1 - my / canvas.height;
+    points.push({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) });
+    points.sort((a, b) => a.x - b.x);
+    onChange(points);
+    draw();
+  });
+
   canvas.addEventListener("pointermove", (e) => {
     if (!isDragging || selectedPoint < 0) return;
     if (activePointerId !== null && e.pointerId !== activePointerId) return;
