@@ -3,6 +3,7 @@
 import { 
   rand, 
   normalizeVec3, 
+  clamp,
   noise3, 
   curlNoise,
   quatFromAxisAngle,
