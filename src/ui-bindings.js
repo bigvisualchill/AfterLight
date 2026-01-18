@@ -1735,6 +1735,14 @@ export function setupGradientEditor(canvasId, points, onChange) {
   });
   
   draw();
+  // Ensure points render as circles even after initial layout (canvas width is CSS-driven).
+  requestAnimationFrame(draw);
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => draw());
+    ro.observe(canvas);
+  } else {
+    window.addEventListener("resize", draw);
+  }
   return {
     draw,
     setPoints: (newPoints) => { points.length = 0; points.push(...newPoints); draw(); },
