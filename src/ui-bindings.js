@@ -103,7 +103,11 @@ export function initElements() {
     field.className = "editable-value";
     field.autocomplete = "off";
     field.spellcheck = false;
-    field.value = formatWithStep(parseFloat(input.value), step);
+    const formatField = (v) => {
+      const s = formatWithStep(v, step);
+      return s.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "").replace(/\.$/, "");
+    };
+    field.value = formatField(parseFloat(input.value));
     field.dataset.for = baseId;
 
     span.replaceWith(field);
@@ -112,7 +116,7 @@ export function initElements() {
       const raw = field.value.trim();
       let v = parseFloat(raw);
       if (!Number.isFinite(v)) {
-        field.value = formatWithStep(parseFloat(input.value), step);
+        field.value = formatField(parseFloat(input.value));
         return;
       }
       v = clamp(v, min, max);
@@ -128,7 +132,7 @@ export function initElements() {
         field.blur();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        field.value = formatWithStep(parseFloat(input.value), step);
+        field.value = formatField(parseFloat(input.value));
         field.blur();
       }
     });
@@ -150,7 +154,8 @@ export function syncUIFromState() {
     if (slider) slider.value = value;
     if (display) {
       const step = slider instanceof HTMLInputElement ? parseFloat(slider.step || "1") : 1;
-      const formatted = decimals > 0 ? Number(value).toFixed(decimals) : formatWithStep(Number(value), step);
+      const s = decimals > 0 ? Number(value).toFixed(decimals) : formatWithStep(Number(value), step);
+      const formatted = s.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "").replace(/\.$/, "");
       if (display instanceof HTMLInputElement) display.value = formatted;
       else display.textContent = formatted;
     }
@@ -869,13 +874,18 @@ function setupSlider(name, setter, decimals = 0) {
   const slider = document.getElementById(name);
   const valueDisplay = document.getElementById(name + "Val");
   if (!slider) return;
+
+  const formatDisplay = (v) => {
+    const step = parseFloat(slider.step || "1");
+    const s = decimals > 0 ? v.toFixed(decimals) : formatWithStep(v, step);
+    return s.replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "").replace(/\.$/, "");
+  };
   
   slider.addEventListener("input", (e) => {
     const value = parseFloat(e.target.value);
     setter(value);
     if (valueDisplay) {
-      const step = parseFloat(slider.step || "1");
-      const formatted = decimals > 0 ? value.toFixed(decimals) : formatWithStep(value, step);
+      const formatted = formatDisplay(value);
       if (valueDisplay instanceof HTMLInputElement) valueDisplay.value = formatted;
       else valueDisplay.textContent = formatted;
     }
