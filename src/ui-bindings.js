@@ -712,8 +712,14 @@ function updateColorModeVisibility() {
 function updateDirectionVisibility() {
   const showCone = state.emitter.direction === "directional";
   const cone = document.getElementById("coneAngle");
-  const coneControl = cone ? cone.closest(".control") : null;
-  if (coneControl) coneControl.style.display = showCone ? "" : "none";
+  if (!cone) return;
+  const coneControl = cone.closest(".control");
+
+  // Keep the group content visible (so expanding the row shows something),
+  // but disable the slider when it doesn't apply.
+  if (coneControl) coneControl.style.display = "";
+  cone.disabled = !showCone;
+  if (coneControl) coneControl.style.opacity = showCone ? "" : "0.55";
 }
 
 function updateForcesVisibility() {
