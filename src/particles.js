@@ -60,11 +60,12 @@ function getEmissionDirection() {
  */
 export function spawnAt(mx, my, count = 1, lerpFactor = 0, dt = 0) {
   for (let i = 0; i < count; i++) {
+    const t = count > 1 ? (i + 0.5) / count : lerpFactor;
     // Interpolate emitter position for smooth trails
     const emitPos = [
-      lerp(state.emitter.frameStartPos[0], state.emitter.pos[0], lerpFactor),
-      lerp(state.emitter.frameStartPos[1], state.emitter.pos[1], lerpFactor),
-      lerp(state.emitter.frameStartPos[2], state.emitter.pos[2], lerpFactor),
+      lerp(state.emitter.frameStartPos[0], state.emitter.pos[0], t),
+      lerp(state.emitter.frameStartPos[1], state.emitter.pos[1], t),
+      lerp(state.emitter.frameStartPos[2], state.emitter.pos[2], t),
     ];
 
     // Get spawn offset based on emitter shape
@@ -322,16 +323,17 @@ export function updateParticles(dt, now) {
  * @param {number} dt - Delta time in seconds
  */
 export function emitParticles(dt) {
-  const lambda = state.particle.emissionRate * dt;
+  // Important: don't "catch up" emission when frames are slow, or emission can
+  // become a positive feedback loop (slow frame -> big dt -> huge spawn burst -> slower).
+  const dtEmit = Math.min(dt, 1 / 60);
+  const lambda = state.particle.emissionRate * dtEmit;
   let accum = spawnAccum + lambda;
-  const spawnNow = Math.floor(accum);
+  let spawnNow = Math.floor(accum);
+  spawnNow = Math.min(spawnNow, 2000);
   
   if (spawnNow > 0) {
     accum -= spawnNow;
-    for (let i = 0; i < spawnNow; i++) {
-      const lerpFactor = (i + 0.5) / spawnNow;
-      spawnAt(0, 0, 1, lerpFactor, dt);
-    }
+    spawnAt(0, 0, spawnNow, 0, dtEmit);
   }
   
   setSpawnAccum(accum);
