@@ -1263,11 +1263,29 @@ export function updatePerfHud(fps, particleCount, cpuMs, gpuMs) {
 
   const gpuKnown = gpuMs !== null && gpuMs !== undefined && Number.isFinite(gpuMs) && gpuMs > 0;
   const gpuT = clamp01((gpuKnown ? gpuMs : 0) / budgetMs);
-  if (gpuEl) gpuEl.textContent = gpuKnown ? `${gpuMs.toFixed(1)}ms` : "--";
+  if (gpuEl) {
+    if (gpuKnown) {
+      gpuEl.textContent = `${gpuMs.toFixed(1)}ms`;
+    } else if (typeof state.perf.gpuLabel === "string" && state.perf.gpuLabel.trim()) {
+      const label = state.perf.gpuLabel.trim();
+      gpuEl.textContent = label.length > 14 ? `${label.slice(0, 13)}…` : label;
+    } else if (state.perf.gpuTimingSupported === false) {
+      gpuEl.textContent = "n/a";
+    } else {
+      gpuEl.textContent = "--";
+    }
+  }
   if (gpuBar) {
     gpuBar.style.width = `${Math.max(2, (gpuKnown ? gpuT : 0) * 100)}%`;
     gpuBar.style.backgroundColor = gpuKnown ? barColor(gpuT) : "rgba(255,255,255,0.25)";
   }
+}
+
+export function setPerfHudVisible(visible) {
+  const hud = document.getElementById("perfHud");
+  if (!hud) return;
+  hud.setAttribute("aria-hidden", visible ? "false" : "true");
+  state.perf.hudVisible = Boolean(visible);
 }
 
 // ============================================================================

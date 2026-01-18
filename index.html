@@ -1841,11 +1841,11 @@
           font-size: 10px;
         }
       }
-      .perf-hud {
-        position: fixed;
-        right: 16px;
-        bottom: 16px;
-        z-index: 1002;
+	      .perf-hud {
+	        position: fixed;
+	        right: 16px;
+	        bottom: 16px;
+	        z-index: 1002;
         display: grid;
         gap: 6px;
         padding: 10px 12px;
@@ -1856,9 +1856,12 @@
         font: 11px/1.3 "SF Mono", Menlo, monospace;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        pointer-events: none;
-        min-width: 120px;
-      }
+	        pointer-events: none;
+	        min-width: 120px;
+	      }
+	      .perf-hud[aria-hidden="true"] {
+	        display: none;
+	      }
       .perf-hud .label {
         color: rgba(160, 180, 200, 0.8);
         letter-spacing: 0.02em;

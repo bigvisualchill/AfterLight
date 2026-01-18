@@ -7,7 +7,7 @@ import { updateCamera, computeDOFParams, worldUnitsPerPixelAt, view } from './sr
 import { spawnAt, updateParticles, emitParticles, sortParticlesByDepth, buildInstanceData } from './src/particles.js';
 import { updateAnimations } from './src/animation.js';
 import { renderAllGizmos, updateGizmoHover, startGizmoDrag, updateGizmoDrag, endGizmoDrag } from './src/gizmos.js';
-import { initElements, setupEventListeners, syncUIFromState, updatePerfHud, setupCurveEditor, setupGradientEditor } from './src/ui-bindings.js';
+import { initElements, setupEventListeners, syncUIFromState, updatePerfHud, setPerfHudVisible, setupCurveEditor, setupGradientEditor } from './src/ui-bindings.js';
 import { startVideoRecording, downloadVideo, downloadHtml } from './exportUtils.js';
 
 // ============================================================================
@@ -88,6 +88,8 @@ async function init() {
   
   // Sync UI to initial state
   syncUIFromState();
+  setPerfHudVisible(state.perf.hudVisible);
+  setupKeyboardShortcuts();
   
   // Setup canvas events
   setupCanvasEvents();
@@ -99,6 +101,26 @@ async function init() {
   // Start render loop
   lastFrame = performance.now();
   requestAnimationFrame(frame);
+}
+
+function setupKeyboardShortcuts() {
+  window.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented) return;
+    if (e.repeat) return;
+
+    const target = e.target;
+    const tag = target && target.tagName ? String(target.tagName).toLowerCase() : "";
+    const isTypingTarget =
+      target instanceof HTMLElement &&
+      (target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select");
+    if (isTypingTarget) return;
+
+    if (e.key === "m" || e.key === "M") {
+      state.perf.hudVisible = !state.perf.hudVisible;
+      setPerfHudVisible(state.perf.hudVisible);
+      e.preventDefault();
+    }
+  });
 }
 
 // ============================================================================

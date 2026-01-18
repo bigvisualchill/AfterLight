@@ -239,6 +239,17 @@ export class Renderer {
       return false;
     }
 
+    // Record basic GPU label when available (timing queries may be unsupported).
+    try {
+      const info = adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : adapter.info;
+      const label =
+        (info && (info.description || info.device || info.architecture || info.vendor)) ||
+        "";
+      if (typeof label === "string") state.perf.gpuLabel = label;
+    } catch {
+      // Adapter info may be blocked by the browser for privacy reasons.
+    }
+
     // Check for timestamp query support
     this.timestampSupported = adapter.features.has("timestamp-query");
     const requiredFeatures = this.timestampSupported ? ["timestamp-query"] : [];
@@ -256,6 +267,7 @@ export class Renderer {
 
     // Timestamp queries disabled - API changed in recent WebGPU versions
     this.timestampSupported = false;
+    state.perf.gpuTimingSupported = Boolean(this.timestampSupported);
 
     await this.createResources();
     return true;
