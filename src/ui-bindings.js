@@ -125,6 +125,7 @@ export function initElements() {
       const emitterPosControl = takeControlBySelector("#emitterPosX");
       const emitterRotationControl = takeControlBySelector("#directionXWheel");
       const emissionDirectionControl = takeControlBySelector("#emissionDirection");
+      const emissionAngleControl = takeControlBySelector("#coneAngle");
       const particleVelocityControl = takeControlBySelector("#initialSpeed");
       const particleSpinControl = takeControlBySelector("#spinRate2d") || takeControlBySelector("#spinRateX");
 
@@ -135,6 +136,7 @@ export function initElements() {
       if (emitterPosControl) emitterGroups.push(makeGroup("emitterPositionGroup", "Emitter Position", [emitterPosControl]));
       if (emitterRotationControl) emitterGroups.push(makeGroup("emitterRotationGroup", "Emitter Rotation", [emitterRotationControl]));
       if (emissionDirectionControl) emitterGroups.push(makeGroup("emissionDirectionGroup", "Emission Direction", [emissionDirectionControl]));
+      if (emissionAngleControl) emitterGroups.push(makeGroup("emissionAngleGroup", "Emission Angle", [emissionAngleControl]));
       if (particleVelocityControl) emitterGroups.push(makeGroup("particleVelocityGroup", "Particle Velocity", [particleVelocityControl]));
       if (particleSpinControl) emitterGroups.push(makeGroup("particleSpinGroup", "Particle Spin", [particleSpinControl]));
 
@@ -146,6 +148,7 @@ export function initElements() {
         emitterPosControl,
         emitterRotationControl,
         emissionDirectionControl,
+        emissionAngleControl,
         particleVelocityControl,
         particleSpinControl,
       ]) {
