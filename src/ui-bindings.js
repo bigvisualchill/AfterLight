@@ -1663,12 +1663,18 @@ export function setupGradientEditor(canvasId, points, onChange) {
   canvas.addEventListener("pointerup", endDrag);
   canvas.addEventListener("pointercancel", endDrag);
   
-  canvas.addEventListener("pointerup", (e) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    if (activePointerId !== null && e.pointerId !== activePointerId) return;
-    if (selectedPoint < 0) return;
-    if (didMove) return;
-    openColorChooser(selectedPoint);
+  canvas.addEventListener("dblclick", (e) => {
+    const { x: mx, y: my } = toCanvasCoords(e);
+    const idx = getPointAt(mx, my);
+    if (idx >= 0) {
+      selectedPoint = idx;
+      openColorChooser(idx);
+      draw();
+      return;
+    }
+
+    // Optional convenience: double click empty marker area -> add point
+    if (my >= canvas.height - (MARKER_HEIGHT + 5)) addPoint();
   });
   
   canvas.addEventListener("contextmenu", (e) => {
