@@ -465,6 +465,21 @@ export function setupEventListeners(callbacks = {}) {
   // Sidebar panel switching
   const sidebarButtons = document.querySelectorAll(".sidebar-btn");
   const panelGroups = document.querySelectorAll(".panel");
+  const settingsContainer = document.querySelector(".settings-panel-container");
+
+  const setSettingsOpen = (open) => {
+    if (!settingsContainer) return;
+    settingsContainer.style.display = open ? "" : "none";
+    if (!open) {
+      sidebarButtons.forEach((b) => b.classList.remove("active"));
+      panelGroups.forEach((p) => p.classList.remove("active"));
+    }
+  };
+
+  const isSettingsOpen = () => {
+    if (!settingsContainer) return true;
+    return settingsContainer.style.display !== "none";
+  };
 
   const setActivePanel = (panelKey) => {
     if (!panelKey) return;
@@ -475,16 +490,30 @@ export function setupEventListeners(callbacks = {}) {
   sidebarButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const panelKey = btn.dataset.panel;
-      if (panelKey) setActivePanel(panelKey);
+      if (!panelKey) return;
+
+      // Clicking the active panel button toggles settings closed.
+      if (btn.classList.contains("active") && isSettingsOpen()) {
+        setSettingsOpen(false);
+        return;
+      }
+
+      // Otherwise open settings and switch to the requested panel.
+      setSettingsOpen(true);
+      setActivePanel(panelKey);
     });
   });
 
   // Default to the first panel if none are active yet
   if (!document.querySelector(".sidebar-btn.active")) {
     const first = Array.from(sidebarButtons).find((b) => b.dataset.panel);
-    if (first) setActivePanel(first.dataset.panel);
+    if (first) {
+      setSettingsOpen(true);
+      setActivePanel(first.dataset.panel);
+    }
   } else {
     const active = document.querySelector(".sidebar-btn.active");
+    setSettingsOpen(true);
     setActivePanel(active?.dataset?.panel);
   }
 
